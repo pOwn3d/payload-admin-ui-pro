@@ -302,6 +302,8 @@ export const DESIGN_TOKENS_CSS = `
 }
 
 @keyframes aup-fadein { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes aup-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 /* ── Loading skeleton ─────────────────────────── */
 .aup-skeleton {
@@ -585,11 +587,11 @@ nav[aria-label*="breadcrumb"],
   -webkit-backdrop-filter: blur(4px) !important;
 }
 
-/* ── Collapsible sections (in edit view) ─────── */
+/* ── Collapsible sections (in edit view, not settings page) ─────── */
 [class*="collapsible__toggle"]:hover {
   color: var(--aup-accent) !important;
 }
-[class*="collapsible"] [class*="collapsible__content"] {
+[class*="collapsible"]:not(.collapsible-field) [class*="collapsible__content"] {
   border-left: 2px solid var(--theme-elevation-100);
   margin-left: 8px;
   padding-left: 16px;
@@ -660,14 +662,18 @@ button[role="switch"]:not([aria-checked="true"]) > * {
   transform: translateX(0px) !important;
 }
 
-/* Hide "Toggle block" text in collapsible headers */
+/* Hide "Toggle block" / "Bloc bascule" text — Payload's toggle button is
+   position:absolute + color:transparent by default. We just ensure that
+   no custom rule accidentally overrides those defaults. The visible label
+   lives in .collapsible__header-wrap, not in the toggle button. */
 .collapsible__toggle-wrap .collapsible__toggle {
+  color: transparent !important;
+  position: absolute !important;
+  overflow: hidden !important;
   font-size: 0 !important;
 }
-.collapsible__toggle-wrap .collapsible__toggle::after {
-  content: attr(aria-label);
-  font-size: 14px !important;
-  font-weight: 600 !important;
+.collapsible__toggle-wrap .collapsible__toggle span {
+  display: none !important;
 }
 
 /* ── Select dropdowns — accent on focus ── */
@@ -685,34 +691,84 @@ button[role="switch"]:not([aria-checked="true"]) > * {
   background-color: var(--aup-accent-subtle) !important;
 }
 
-/* ── Collapsible sections in settings — better spacing ── */
+/* ── Collapsible sections in settings — compact card style ── */
 .collapsible-field {
   border: var(--aup-border-subtle) !important;
-  border-radius: var(--aup-radius-lg) !important;
-  margin-bottom: 16px !important;
+  border-radius: var(--aup-radius-md) !important;
+  margin-bottom: 10px !important;
+  background: var(--theme-elevation-0) !important;
+  box-shadow: var(--aup-shadow-1) !important;
+  overflow: hidden !important;
 }
 .collapsible-field .collapsible__toggle-wrap {
-  padding: 14px 20px !important;
+  padding: 10px 16px !important;
   transition: background var(--aup-duration-fast) !important;
+  border-bottom: 1px solid transparent !important;
 }
 .collapsible-field .collapsible__toggle-wrap:hover {
   background: var(--aup-accent-subtle) !important;
 }
+.collapsible-field[open] .collapsible__toggle-wrap {
+  border-bottom-color: var(--theme-elevation-100) !important;
+}
 .collapsible-field .collapsible__content {
-  padding: 4px 20px 20px !important;
+  padding: 12px 16px 16px !important;
+}
+
+/* ── Settings global page — wider and spacier ── */
+.global-edit .global-edit__fields {
+  max-width: 960px !important;
+}
+
+/* ── Module toggles row — card style ── */
+.group-field__wrap > .row .row__fields {
+  gap: 16px !important;
+}
+
+/* ── Checkbox fields in settings — larger touch targets ── */
+.field-type.checkbox label {
+  padding: 8px 0 !important;
+}
+.field-type.checkbox .field-description {
+  margin-top: 2px !important;
+  font-size: 12px !important;
+  opacity: 0.65 !important;
 }
 
 /* ── Group field headers — cleaner look ── */
 .group-field__wrap > .group-field__label {
-  font-size: 14px !important;
+  font-size: 15px !important;
   font-weight: 700 !important;
   letter-spacing: -0.01em !important;
-  margin-bottom: 12px !important;
+  margin-bottom: 16px !important;
+  padding-bottom: 8px !important;
+  border-bottom: 1px solid var(--theme-elevation-100) !important;
+}
+/* Hide empty group labels (label: '') */
+.group-field__wrap > .group-field__label:empty {
+  display: none !important;
 }
 
 /* ── Row field — better alignment ── */
 .field-type.row .row__fields {
-  gap: 12px !important;
+  gap: 16px !important;
+}
+
+/* ── Select fields — consistent min-width ── */
+.field-type.select {
+  min-width: 200px !important;
+}
+
+/* ── Description text — softer appearance ── */
+.field-description {
+  font-size: 12.5px !important;
+  line-height: 1.5 !important;
+  color: var(--theme-elevation-500) !important;
+}
+
+/* ── Number fields — consistent width ── */
+.field-type.number input {
+  max-width: 180px !important;
 }
 
 /* ── Smooth transitions on all interactive elements ── */
@@ -723,5 +779,136 @@ a, button, input, select, textarea,
               border-color var(--aup-duration-fast),
               box-shadow var(--aup-duration-fast),
               transform var(--aup-duration-fast) !important;
+}
+
+/* ═══════════════════════════════════════════════════
+   RESPONSIVE — Tablet medium (≤768px)
+   ═══════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  /* Kanban: vertical stacked columns */
+  .aup-kanban-board {
+    flex-direction: column !important;
+    overflow-x: visible !important;
+  }
+  .aup-kanban-column {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  /* Calendar: hide empty cells, compact cells */
+  .aup-calendar-empty {
+    display: none !important;
+  }
+  .aup-calendar-grid {
+    grid-template-columns: repeat(7, 1fr) !important;
+  }
+  .aup-calendar-cell {
+    min-height: 60px !important;
+    font-size: 11px !important;
+  }
+  .aup-calendar-dayheader {
+    font-size: 10px !important;
+    padding: 4px !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   RESPONSIVE — Tablet (≤1024px)
+   ═══════════════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  .aup-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important;
+  }
+  .aup-widget-card {
+    grid-column: span 12 !important;
+  }
+  .aup-palette-dialog {
+    width: min(500px, calc(100vw - 24px)) !important;
+    top: 15vh !important;
+  }
+  .global-edit .global-edit__fields {
+    max-width: 100% !important;
+    padding: 0 1rem !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   RESPONSIVE — Mobile (≤640px)
+   ═══════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+  .aup-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  .aup-widget-card {
+    grid-column: span 1 !important;
+  }
+  .aup-widget-header {
+    padding: 12px 14px 0 !important;
+  }
+  .aup-widget-content {
+    padding: 12px 14px !important;
+  }
+  /* Command palette: fullscreen on mobile */
+  .aup-palette-dialog {
+    width: 100vw !important;
+    top: 0 !important;
+    left: 0 !important;
+    transform: none !important;
+    border-radius: 0 !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  .aup-palette-overlay {
+    backdrop-filter: blur(8px) !important;
+  }
+  /* Notification bell dropdown: fullwidth bottom */
+  .aup-notif-dropdown {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    border-radius: 16px 16px 0 0 !important;
+    max-height: 60vh !important;
+    box-shadow: var(--aup-shadow-4) !important;
+  }
+  /* Stats grid: 2 columns instead of auto */
+  .aup-stat-item {
+    min-width: calc(50% - 8px) !important;
+  }
+  /* Quick actions: vertical stack */
+  .aup-action-btn {
+    min-width: 100% !important;
+  }
+  /* Collapsible sections tighter */
+  .collapsible-field .collapsible__toggle-wrap {
+    padding: 8px 12px !important;
+  }
+  .collapsible-field .collapsible__content {
+    padding: 10px 12px 14px !important;
+  }
+  /* Row fields stack vertically */
+  .field-type.row .row__fields {
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+  .field-type.row .row__fields > * {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  /* Module toggles: full width each */
+  .group-field__wrap > .row .row__fields {
+    flex-direction: column !important;
+  }
+  /* KBD badges smaller */
+  .aup-kbd {
+    font-size: 9px !important;
+    padding: 1px 5px !important;
+  }
 }
 `

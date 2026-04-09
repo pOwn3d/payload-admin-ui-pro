@@ -132,8 +132,8 @@ function autoDetectViews(collection: CollectionConfig): CollectionViewConfig | u
       titleField = field.name
     }
 
-    // Date detection
-    if (!dateField && field.type === 'date') {
+    // Date detection — only meaningful content dates, not system timestamps
+    if (!dateField && field.type === 'date' && !['updatedAt', 'createdAt', 'lockUntil', 'resetPasswordExpiration'].includes(field.name)) {
       dateField = field.name
     }
   }
@@ -159,6 +159,11 @@ function autoDetectViews(collection: CollectionConfig): CollectionViewConfig | u
     kanbanConfig = {
       statusField,
     }
+  }
+
+  // Collections with explicit date fields → calendar (skip uploads — makes no sense)
+  if (dateField && !isUpload) {
+    views.push('calendar')
   }
 
   // Only return if we found more than just 'table'

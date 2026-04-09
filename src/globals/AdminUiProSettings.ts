@@ -2,6 +2,7 @@ import type { GlobalConfig } from 'payload'
 import type { AdminUiProConfig } from '../types.js'
 import { validateUrl, validateBackground, validateTextField } from '../utils/security.js'
 import { THEME_PRESETS } from '../styles/theme-presets.js'
+import { resolvePermissions, hasPermission } from '../utils/rbac.js'
 
 /**
  * Create the AdminUiPro settings global.
@@ -21,7 +22,7 @@ export function createAdminUiProSettingsGlobal(
   themeOptions.unshift({ label: { en: 'Custom', fr: 'Personnalisé' }, value: 'custom' })
 
   return {
-    slug: 'admin-ui-pro-settings',
+    slug: 'aup-settings',
     label: { en: 'Admin UI Pro', fr: 'Admin UI Pro' },
     admin: {
       group: { en: 'Settings', fr: 'Paramètres' },
@@ -36,6 +37,12 @@ export function createAdminUiProSettingsGlobal(
         type: 'group',
         name: 'modulesEnabled',
         label: { en: 'Active Modules', fr: 'Modules actifs' },
+        admin: {
+          description: {
+            en: 'Toggle modules on/off. Note: List Views, Field Enhance, and Activity modules require a server restart to take effect.',
+            fr: 'Activez/désactivez les modules. Note : Vues de listes, Champs améliorés et Fil d\'activité nécessitent un redémarrage serveur pour prendre effet.',
+          },
+        },
         fields: [
           {
             type: 'row',
@@ -59,7 +66,8 @@ export function createAdminUiProSettingsGlobal(
       // ── Theme ──────────────────────────────────────────────────────
       {
         type: 'collapsible',
-        label: { en: 'Theme', fr: 'Thème' },
+        label: { en: '🎨 Theme', fr: '🎨 Thème' },
+        admin: { initCollapsed: true },
         fields: [
           {
             type: 'group',
@@ -76,6 +84,26 @@ export function createAdminUiProSettingsGlobal(
                   description: {
                     en: 'Choose a professional theme or select "Custom" to define your own colors',
                     fr: 'Choisissez un thème professionnel ou "Personnalisé" pour définir vos propres couleurs',
+                  },
+                },
+              },
+              // Theme preview (UI-only field — no data stored)
+              {
+                name: 'themePreview',
+                type: 'ui',
+                admin: {
+                  components: {
+                    Field: '@consilioweb/payload-admin-ui-pro/client#ThemePreview',
+                  },
+                },
+              },
+              // Theme marketplace — import/export community themes
+              {
+                name: 'themeMarketplace',
+                type: 'ui',
+                admin: {
+                  components: {
+                    Field: '@consilioweb/payload-admin-ui-pro/client#ThemeMarketplace',
                   },
                 },
               },
@@ -131,7 +159,8 @@ export function createAdminUiProSettingsGlobal(
       // ── Logo & Brand ───────────────────────────────────────────────
       {
         type: 'collapsible',
-        label: { en: 'Logo & Brand', fr: 'Logo & Marque' },
+        label: { en: '✦ Logo & Brand', fr: '✦ Logo & Marque' },
+        admin: { initCollapsed: true },
         fields: [
           {
             type: 'group',
@@ -176,9 +205,9 @@ export function createAdminUiProSettingsGlobal(
                     name: 'logoHeight',
                     type: 'number',
                     label: { en: 'Logo Height (px)', fr: 'Hauteur du logo (px)' },
-                    defaultValue: 28,
+                    defaultValue: 40,
                     min: 16,
-                    max: 60,
+                    max: 200,
                     admin: { width: '50%' },
                   },
                 ],
@@ -191,8 +220,9 @@ export function createAdminUiProSettingsGlobal(
       // ── Branding & Login ───────────────────────────────────────────
       {
         type: 'collapsible',
-        label: { en: 'Branding & Login', fr: 'Branding & Connexion' },
+        label: { en: '🔐 Branding & Login', fr: '🔐 Branding & Connexion' },
         admin: {
+          initCollapsed: true,
           condition: (data) => data?.modulesEnabled?.branding !== false,
         },
         fields: [
@@ -293,8 +323,9 @@ export function createAdminUiProSettingsGlobal(
       // ── Dashboard ──────────────────────────────────────────────────
       {
         type: 'collapsible',
-        label: { en: 'Dashboard', fr: 'Tableau de bord' },
+        label: { en: '📊 Dashboard', fr: '📊 Tableau de bord' },
         admin: {
+          initCollapsed: true,
           condition: (data) => data?.modulesEnabled?.dashboard !== false,
         },
         fields: [
@@ -315,11 +346,37 @@ export function createAdminUiProSettingsGlobal(
                   { label: { en: 'Recent Activity', fr: 'Activité récente' }, value: 'recent-activity' },
                   { label: { en: 'Collection Overview', fr: 'Aperçu collection' }, value: 'collection-overview' },
                   { label: { en: 'Activity Feed (audit)', fr: 'Fil d\'activité (audit)' }, value: 'activity-feed' },
+                  { label: { en: 'Welcome / Onboarding', fr: 'Bienvenue / Onboarding' }, value: 'welcome' },
+                  { label: { en: 'Bookmarks', fr: 'Favoris' }, value: 'bookmarks' },
+                  { label: { en: 'Notes', fr: 'Notes' }, value: 'notes' },
+                  { label: { en: 'Activity Chart', fr: 'Graphique d\'activit\u00e9' }, value: 'chart' },
                 ],
                 admin: {
                   description: {
                     en: 'Widgets shown by default for new users',
                     fr: 'Widgets affichés par défaut pour les nouveaux utilisateurs',
+                  },
+                },
+              },
+              {
+                name: 'dashboardTitle',
+                type: 'text',
+                label: { en: 'Dashboard Title', fr: 'Titre du tableau de bord' },
+                admin: {
+                  description: {
+                    en: 'Custom title shown on the dashboard (default: "Dashboard")',
+                    fr: 'Titre personnalisé affiché sur le tableau de bord (défaut : "Tableau de bord")',
+                  },
+                },
+              },
+              {
+                name: 'dashboardSubtitle',
+                type: 'text',
+                label: { en: 'Dashboard Subtitle', fr: 'Sous-titre du tableau de bord' },
+                admin: {
+                  description: {
+                    en: 'Short text shown below the title (e.g. company motto)',
+                    fr: 'Texte court sous le titre (ex: slogan de l\'entreprise)',
                   },
                 },
               },
@@ -337,8 +394,9 @@ export function createAdminUiProSettingsGlobal(
       // ── Activity Feed ──────────────────────────────────────────────
       {
         type: 'collapsible',
-        label: { en: 'Activity Feed', fr: 'Fil d\'activité' },
+        label: { en: '📝 Activity Feed', fr: '📝 Fil d\'activité' },
         admin: {
+          initCollapsed: true,
           condition: (data) => data?.modulesEnabled?.activity !== false,
         },
         fields: [
@@ -373,6 +431,117 @@ export function createAdminUiProSettingsGlobal(
                   },
                 },
               },
+              // ── Notification Rules ────────────────────────────────
+              {
+                name: 'notificationRules',
+                type: 'array',
+                dbName: 'aup_notif_rules',
+                label: { en: 'Notification Rules', fr: 'Règles de notification' },
+                labels: {
+                  singular: { en: 'Rule', fr: 'Règle' },
+                  plural: { en: 'Rules', fr: 'Règles' },
+                },
+                admin: {
+                  description: {
+                    en: 'Define rules to send notifications when events occur. Webhooks are fire-and-forget (5s timeout).',
+                    fr: 'Définissez des règles pour envoyer des notifications lors d\'événements. Les webhooks sont fire-and-forget (timeout 5s).',
+                  },
+                  initCollapsed: true,
+                },
+                fields: [
+                  {
+                    type: 'row',
+                    fields: [
+                      {
+                        name: 'event',
+                        type: 'select',
+                        dbName: 'aup_nr_event',
+                        label: { en: 'Event', fr: 'Événement' },
+                        required: true,
+                        options: [
+                          { label: { en: 'Created', fr: 'Création' }, value: 'create' },
+                          { label: { en: 'Updated', fr: 'Mise à jour' }, value: 'update' },
+                          { label: { en: 'Deleted', fr: 'Suppression' }, value: 'delete' },
+                        ],
+                        admin: { width: '33%' },
+                      },
+                      {
+                        name: 'collection',
+                        type: 'text',
+                        label: { en: 'Collection', fr: 'Collection' },
+                        required: true,
+                        defaultValue: '*',
+                        admin: {
+                          width: '33%',
+                          description: {
+                            en: 'Collection slug or * for all',
+                            fr: 'Slug de collection ou * pour toutes',
+                          },
+                        },
+                      },
+                      {
+                        name: 'channel',
+                        type: 'select',
+                        dbName: 'aup_nr_channel',
+                        label: { en: 'Channel', fr: 'Canal' },
+                        required: true,
+                        options: [
+                          { label: { en: 'Webhook', fr: 'Webhook' }, value: 'webhook' },
+                          { label: { en: 'In-App', fr: 'In-App' }, value: 'in-app' },
+                        ],
+                        admin: { width: '33%' },
+                      },
+                    ],
+                  },
+                  {
+                    name: 'webhookUrl',
+                    type: 'text',
+                    label: { en: 'Webhook URL', fr: 'URL du webhook' },
+                    admin: {
+                      condition: (_data, siblingData) => siblingData?.channel === 'webhook',
+                      description: {
+                        en: 'Endpoint receiving the POST request (JSON payload)',
+                        fr: 'Endpoint recevant la requête POST (payload JSON)',
+                      },
+                    },
+                    validate: (value: string | null | undefined, { siblingData }: any) => {
+                      if (siblingData?.channel !== 'webhook') return true
+                      if (!value) return 'Webhook URL is required when channel is webhook'
+                      return validateUrl(value)
+                    },
+                  },
+                  {
+                    type: 'collapsible',
+                    label: { en: 'Condition (optional)', fr: 'Condition (optionnel)' },
+                    admin: { initCollapsed: true },
+                    fields: [
+                      {
+                        type: 'row',
+                        fields: [
+                          {
+                            name: 'conditionField',
+                            type: 'text',
+                            label: { en: 'Field name', fr: 'Nom du champ' },
+                            admin: {
+                              width: '50%',
+                              description: {
+                                en: 'Only fire when this field equals the value below',
+                                fr: 'Ne déclencher que si ce champ a la valeur ci-dessous',
+                              },
+                            },
+                          },
+                          {
+                            name: 'conditionEquals',
+                            type: 'text',
+                            label: { en: 'Equals', fr: 'Égale' },
+                            admin: { width: '50%' },
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
             ],
           },
         ],
@@ -381,8 +550,9 @@ export function createAdminUiProSettingsGlobal(
       // ── Command Palette ────────────────────────────────────────────
       {
         type: 'collapsible',
-        label: { en: 'Command Palette', fr: 'Palette de commandes' },
+        label: { en: '⌘ Command Palette', fr: '⌘ Palette de commandes' },
         admin: {
+          initCollapsed: true,
           condition: (data) => data?.modulesEnabled?.quickActions !== false,
         },
         fields: [
@@ -418,8 +588,9 @@ export function createAdminUiProSettingsGlobal(
       // ── List Views ─────────────────────────────────────────────────
       {
         type: 'collapsible',
-        label: { en: 'List Views', fr: 'Vues de listes' },
+        label: { en: '📋 List Views', fr: '📋 Vues de listes' },
         admin: {
+          initCollapsed: true,
           condition: (data) => data?.modulesEnabled?.listViews !== false,
         },
         fields: [
@@ -435,8 +606,8 @@ export function createAdminUiProSettingsGlobal(
                 defaultValue: true,
                 admin: {
                   description: {
-                    en: 'Automatically suggest cards/gallery/kanban based on collection field types',
-                    fr: 'Suggérer automatiquement cards/galerie/kanban selon les types de champs',
+                    en: 'Automatically suggest cards/gallery/kanban based on collection field types. ⚠ Requires server restart.',
+                    fr: 'Suggérer automatiquement cards/galerie/kanban selon les types de champs. ⚠ Nécessite un redémarrage serveur.',
                   },
                 },
               },
@@ -450,6 +621,7 @@ export function createAdminUiProSettingsGlobal(
                   { label: { en: 'Cards', fr: 'Cartes' }, value: 'cards' },
                   { label: { en: 'Gallery', fr: 'Galerie' }, value: 'gallery' },
                   { label: { en: 'Kanban', fr: 'Kanban' }, value: 'kanban' },
+                  { label: { en: 'Calendar', fr: 'Calendrier' }, value: 'calendar' },
                 ],
                 admin: {
                   description: {
@@ -472,8 +644,9 @@ export function createAdminUiProSettingsGlobal(
       // ── Field Enhance ──────────────────────────────────────────────
       {
         type: 'collapsible',
-        label: { en: 'Field Enhancements', fr: 'Améliorations des champs' },
+        label: { en: '✨ Field Enhancements', fr: '✨ Améliorations des champs' },
         admin: {
+          initCollapsed: true,
           condition: (data) => data?.modulesEnabled?.fieldEnhance !== false,
         },
         fields: [
@@ -489,8 +662,8 @@ export function createAdminUiProSettingsGlobal(
                 defaultValue: false,
                 admin: {
                   description: {
-                    en: 'When enabled, automatically detects and enhances fields. When disabled, only fields with admin.custom.enhance are modified.',
-                    fr: 'Quand activé, détecte et améliore automatiquement les champs. Quand désactivé, seuls les champs avec admin.custom.enhance sont modifiés.',
+                    en: 'When enabled, automatically detects and enhances fields. ⚠ Requires server restart.',
+                    fr: 'Quand activé, détecte et améliore automatiquement les champs. ⚠ Nécessite un redémarrage serveur.',
                   },
                 },
               },
@@ -544,28 +717,38 @@ export function createAdminUiProSettingsGlobal(
         ],
       },
 
+      // ── Integrated Plugins ─────────────────────────────────────────
+      {
+        type: 'collapsible',
+        label: { en: '🔌 Integrated Plugins', fr: '🔌 Plugins intégrés' },
+        admin: { initCollapsed: true },
+        fields: [
+          {
+            name: 'pluginsHub',
+            type: 'ui',
+            admin: {
+              components: {
+                Field: '@consilioweb/payload-admin-ui-pro/client#PluginsHub',
+              },
+            },
+          },
+        ],
+      },
+
       // ── Export / Import ────────────────────────────────────────────
       {
         type: 'collapsible',
-        label: { en: 'Export / Import', fr: 'Exporter / Importer' },
+        label: { en: '📦 Export / Import', fr: '📦 Exporter / Importer' },
+        admin: { initCollapsed: true },
         fields: [
           {
-            type: 'group',
-            name: 'exportImport',
-            label: '',
-            fields: [
-              {
-                name: 'exportConfig',
-                type: 'json',
-                label: { en: 'Configuration (JSON)', fr: 'Configuration (JSON)' },
-                admin: {
-                  description: {
-                    en: 'Copy this JSON to export your settings. Paste a valid JSON to import settings from another instance.',
-                    fr: 'Copiez ce JSON pour exporter vos réglages. Collez un JSON valide pour importer les réglages d\'une autre instance.',
-                  },
-                },
+            name: 'exportImportUI',
+            type: 'ui',
+            admin: {
+              components: {
+                Field: '@consilioweb/payload-admin-ui-pro/client#ExportImportUI',
               },
-            ],
+            },
           },
         ],
       },
@@ -575,11 +758,10 @@ export function createAdminUiProSettingsGlobal(
 
 function defaultUpdateAccess({ req }: { req: any }): boolean {
   if (!req.user) return false
-  // If the user collection has a "role" or "roles" field, check for admin
-  // If not, any authenticated user can update (typical single-admin setups)
-  if (req.user.role) return req.user.role === 'admin'
-  if (req.user.roles) return req.user.roles.includes('admin')
-  return true // No role system → any authenticated user can manage settings
+
+  // Use RBAC system to determine settings access
+  const permissions = resolvePermissions(req.user)
+  return hasPermission(permissions, 'settings', 'edit')
 }
 
 function moduleToggle(

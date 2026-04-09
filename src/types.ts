@@ -30,9 +30,11 @@ export interface AdminUiProConfig {
   /** Sync with @consilioweb/admin-nav if installed */
   nav?: { sync?: boolean }
 
-  /** Access control overrides for the global settings */
+  /** Access control overrides for the global settings and per-module permissions */
   access?: {
     settings?: Access
+    /** Custom permission resolver — overrides role-based defaults */
+    permissions?: (user: any) => Record<string, boolean | string> | Promise<Record<string, boolean | string>>
   }
 
   /**
@@ -102,6 +104,7 @@ export interface CollectionViewConfig {
     titleField?: string
     subtitleField?: string
     statusField?: string
+    statusOptions?: string[]
   }
   /** Kanban view configuration */
   kanbanConfig?: {
@@ -144,6 +147,7 @@ export type ActionDefinition =
   | { type: 'url'; url: string }
   | { type: 'navigate'; path: string }
   | { type: 'create'; collection: string }
+  | { type: 'callback'; handler: () => void | Promise<void> }
 
 // ─── Field Enhance Module ───────────────────────────────────────────────────
 
@@ -227,10 +231,21 @@ export interface AdminUiProSettingsData {
   dashboardConfig?: {
     defaultWidgets: string[] | null
     allowCustomization: boolean
+    dashboardTitle?: string | null
+    dashboardSubtitle?: string | null
   }
   activityConfig?: {
     retentionDays: number
     trackFields: boolean
+    notificationRules?: Array<{
+      id: string
+      event: 'create' | 'update' | 'delete'
+      collection: string
+      channel: 'webhook' | 'in-app'
+      webhookUrl?: string
+      conditionField?: string
+      conditionEquals?: string
+    }>
   }
   commandPalette?: {
     shortcut: string
@@ -262,7 +277,9 @@ export const SENSITIVE_FIELDS = [
   'salt',
   'token',
   'apiKey',
+  'api_key',
   'secret',
+  'secretKey',
   'hash',
   'resetPasswordToken',
   'resetPasswordExpiration',
@@ -270,7 +287,17 @@ export const SENSITIVE_FIELDS = [
   'lockUntil',
   '_verificationToken',
   'totpSecret',
+  'refreshToken',
+  'accessToken',
+  'sessionToken',
+  'encryptionKey',
+  'privateKey',
 ] as const
+
+// ─── Re-exports for public API ─────────────────────────────────────────────
+
+export type { WidgetDefinition } from './modules/dashboard/widgetRegistry.js'
+export type { AupPermissions, PermissionLevel, AupModule, PermissionsCallback } from './utils/rbac.js'
 
 /** Max sizes for preference payloads */
 export const VALIDATION_LIMITS = {

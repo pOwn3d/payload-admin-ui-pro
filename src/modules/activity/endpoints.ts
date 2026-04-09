@@ -1,5 +1,5 @@
 import type { Endpoint } from 'payload'
-import { rateLimit, rateLimitResponse } from '../../utils/security.js'
+import { rateLimit, rateLimitKey, rateLimitResponse } from '../../utils/security.js'
 
 /**
  * Activity log API endpoints.
@@ -13,6 +13,23 @@ import { rateLimit, rateLimitResponse } from '../../utils/security.js'
  * - All endpoints require admin role
  * - Rate limited
  */
+// In-memory presence store (per-server instance)
+const presenceStore = new Map<string, Map<string, { userName: string; lastSeen: number }>>()
+
+// Cleanup stale entries every 60s
+const presenceCleanup = setInterval(() => {
+  const now = Date.now()
+  for (const [key, editors] of presenceStore) {
+    for (const [userId, data] of editors) {
+      if (now - data.lastSeen > 60_000) editors.delete(userId)
+    }
+    if (editors.size === 0) presenceStore.delete(key)
+  }
+}, 60_000)
+if (typeof presenceCleanup === 'object' && 'unref' in presenceCleanup) {
+  presenceCleanup.unref()
+}
+
 export function createActivityEndpoints(
   logCollectionSlug: string,
   retentionDays: number,
@@ -110,6 +127,93 @@ export function createActivityEndpoints(
             JSON.stringify({ error: 'Failed to cleanup' }),
             { status: 500 },
           )
+        }
+      },
+    },
+    // GET — presence (who is editing)
+    {
+      path: '/admin-ui-pro/presence',
+      method: 'get',
+      handler: async (req) => {
+        if (!req.user) {
+          return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
+        }
+
+        const url = new URL(req.url || '', 'http://localhost')
+        const key = url.searchParams.get('key')
+        if (!key) {
+          return new Response(JSON.stringify({ editors: [] }), {
+            status: 200, headers: { 'Content-Type': 'application/json' },
+          })
+        }
+
+        const editors = presenceStore.get(key)
+        const list = editors
+          ? Array.from(editors.entries()).map(([userId, data]) => ({
+              userId, userName: data.userName, lastSeen: data.lastSeen,
+            }))
+          : []
+
+        return new Response(JSON.stringify({ editors: list }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        })
+      },
+    },
+
+    // POST — heartbeat presence
+    {
+      path: '/admin-ui-pro/presence',
+      method: 'post',
+      handler: async (req) => {
+        if (!req.user) {
+          return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
+        }
+
+        const presenceKey = `presence:${req.user.id}`
+        if (!rateLimit(presenceKey, 30)) return rateLimitResponse()
+
+        try {
+          const body = await req.json?.() || {}
+          const key = body.key
+          if (!key || typeof key !== 'string') {
+            return new Response(JSON.stringify({ error: 'Missing key' }), { status: 400 })
+          }
+
+          if (!presenceStore.has(key)) presenceStore.set(key, new Map())
+          presenceStore.get(key)!.set(String(req.user.id), {
+            userName: (req.user as any).email || (req.user as any).name || `User ${req.user.id}`,
+            lastSeen: Date.now(),
+          })
+
+          return new Response(JSON.stringify({ ok: true }), {
+            status: 200, headers: { 'Content-Type': 'application/json' },
+          })
+        } catch {
+          return new Response(JSON.stringify({ error: 'Invalid body' }), { status: 400 })
+        }
+      },
+    },
+
+    // DELETE — leave presence
+    {
+      path: '/admin-ui-pro/presence',
+      method: 'delete',
+      handler: async (req) => {
+        if (!req.user) {
+          return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
+        }
+
+        try {
+          const body = await req.json?.() || {}
+          const key = body.key
+          if (key && presenceStore.has(key)) {
+            presenceStore.get(key)!.delete(String(req.user.id))
+          }
+          return new Response(JSON.stringify({ ok: true }), {
+            status: 200, headers: { 'Content-Type': 'application/json' },
+          })
+        } catch {
+          return new Response(JSON.stringify({ ok: true }), { status: 200 })
         }
       },
     },

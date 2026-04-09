@@ -24,24 +24,46 @@ interface ListViewsConfig {
 /**
  * Initializer component injected via afterNavLinks.
  * Populates the list view config registry from a data attribute.
+ * Uses MutationObserver as fallback if the RSC bridge hasn't rendered yet.
  * Renders nothing visible.
  */
 export const ListViewsInitializer: React.FC = () => {
   useEffect(() => {
-    // Read config from the data attribute on our hidden div
-    const el = document.querySelector('[data-list-views-config]')
-    if (!el) return
+    const readAndRegister = (): boolean => {
+      const el = document.querySelector('[data-list-views-config]')
+      if (!el) return false
 
-    try {
-      const configStr = el.getAttribute('data-list-views-config')
-      if (!configStr) return
+      try {
+        const configStr = el.getAttribute('data-list-views-config')
+        if (!configStr) return false
 
-      const configs: ListViewsConfig = JSON.parse(configStr)
-      for (const [slug, config] of Object.entries(configs)) {
-        registerListViewConfig(slug, config)
+        const configs: ListViewsConfig = JSON.parse(configStr)
+        for (const [slug, config] of Object.entries(configs)) {
+          registerListViewConfig(slug, config)
+        }
+        return true
+      } catch {
+        return false
       }
-    } catch {
-      // Invalid config — silently fail
+    }
+
+    // Try immediately
+    if (readAndRegister()) return
+
+    // Fallback: observe DOM until the config bridge renders
+    const observer = new MutationObserver(() => {
+      if (readAndRegister()) {
+        observer.disconnect()
+      }
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+
+    // Safety timeout — stop observing after 10s
+    const timeout = setTimeout(() => observer.disconnect(), 10_000)
+
+    return () => {
+      observer.disconnect()
+      clearTimeout(timeout)
     }
   }, [])
 

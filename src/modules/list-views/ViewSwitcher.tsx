@@ -14,6 +14,7 @@ const VIEW_ICONS: Record<ViewMode, { icon: string; label: string }> = {
   cards: { icon: '▦', label: 'Cards' },
   gallery: { icon: '▣', label: 'Gallery' },
   kanban: { icon: '⊞', label: 'Kanban' },
+  calendar: { icon: '📅', label: 'Calendar' },
 }
 
 /**

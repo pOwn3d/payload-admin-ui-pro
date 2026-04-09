@@ -7,6 +7,9 @@ import { ViewSwitcher } from './ViewSwitcher.js'
 import { CardListView } from './CardListView.js'
 import { GalleryListView } from './GalleryListView.js'
 import { KanbanListView } from './KanbanListView.js'
+import { CalendarListView } from './CalendarListView.js'
+import { SavedViews } from './SavedViews.js'
+import { ExportButton } from './ExportButton.js'
 
 interface CustomListViewProps {
   /** Collection slug */
@@ -43,12 +46,13 @@ export const CustomListView: React.FC<CustomListViewProps> = ({
   cardConfig,
   kanbanConfig,
 }) => {
-  // Load cached preferences on mount
-  useEffect(() => {
+  // Load cached preferences synchronously before first render
+  const [initialized] = useState(() => {
     loadCachedViewPrefs()
-  }, [])
+    return true
+  })
 
-  const cached = getCachedViewMode(collection)
+  const cached = initialized ? getCachedViewMode(collection) : undefined
   const [mode, setMode] = useState<ViewMode>(cached || defaultView)
   const [docs, setDocs] = useState<DocItem[]>([])
   const [totalDocs, setTotalDocs] = useState(0)
@@ -116,6 +120,7 @@ export const CustomListView: React.FC<CustomListViewProps> = ({
           available={availableViews}
           onChange={handleModeChange}
         />
+        <SavedViews collection={collection} currentViewMode={mode} />
       </div>
     )
   }
@@ -142,15 +147,18 @@ export const CustomListView: React.FC<CustomListViewProps> = ({
           available={availableViews}
           onChange={handleModeChange}
         />
-        <span style={countStyle}>
+        <SavedViews collection={collection} currentViewMode={mode} />
+        <span style={{ ...countStyle, marginLeft: 'auto' }}>
           {totalDocs} document{totalDocs !== 1 ? 's' : ''}
         </span>
+        <ExportButton collection={collection} totalDocs={totalDocs} />
       </div>
 
       {/* Active view */}
       {mode === 'cards' && <CardListView {...viewProps} />}
       {mode === 'gallery' && <GalleryListView {...viewProps} />}
       {mode === 'kanban' && <KanbanListView {...viewProps} />}
+      {mode === 'calendar' && <CalendarListView {...viewProps} />}
 
       {/* Hide the default Payload table when not in table mode */}
       <style>{`
@@ -167,9 +175,10 @@ export const CustomListView: React.FC<CustomListViewProps> = ({
 const toolbarStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '1rem',
-  padding: '0.75rem 0',
-  marginBottom: '0.5rem',
+  gap: '0.75rem',
+  padding: '0.5rem 0',
+  marginBottom: '0.25rem',
+  flexWrap: 'wrap',
 }
 
 const countStyle: React.CSSProperties = {

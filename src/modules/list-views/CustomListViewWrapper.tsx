@@ -1,27 +1,63 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { CustomListView } from './CustomListView.js'
 import type { ViewMode } from './types.js'
 
 /**
  * Wrapper injected via beforeListTable.
- * Reads the collection config from a data-attribute stamped by the RSC layer,
- * or falls back to reading from the DOM (Payload renders the collection slug
- * in the URL path).
+ * Reads config from:
+ * 1. Window registry (populated by ListViewsInitializer)
+ * 2. Fallback: reads directly from data-list-views-config data attribute
  *
- * The actual view config is passed via admin.custom.listViews at plugin init time.
- * Since beforeListTable components receive limited props in Payload 3, we read
- * the config from a global registry populated at plugin init.
+ * Uses state + effect to handle timing: the registry may not be populated
+ * at first render since ListViewsInitializer runs in a useEffect.
  */
 export const CustomListViewWrapper: React.FC = () => {
-  // Extract collection slug from URL: /admin/collections/{slug}
   const slug = extractCollectionSlug()
-  if (!slug) return null
+  const [config, setConfig] = useState<ListViewConfigEntry | null>(null)
 
-  // Read config from window registry (populated by the plugin's init)
-  const config = getListViewConfig(slug)
-  if (!config) return null
+  useEffect(() => {
+    if (!slug) return
+
+    // Try registry first
+    const fromRegistry = getListViewConfig(slug)
+    if (fromRegistry) {
+      setConfig(fromRegistry)
+      return
+    }
+
+    // Fallback: read directly from the data attribute
+    const readFromBridge = (): boolean => {
+      const el = document.querySelector('[data-list-views-config]')
+      if (!el) return false
+      try {
+        const all = JSON.parse(el.getAttribute('data-list-views-config') || '{}')
+        if (all[slug]) {
+          registerListViewConfig(slug, all[slug])
+          setConfig(all[slug])
+          return true
+        }
+      } catch {}
+      return false
+    }
+
+    if (readFromBridge()) return
+
+    // Wait for bridge to appear
+    const observer = new MutationObserver(() => {
+      // Also re-check registry (ListViewsInitializer may have populated it)
+      const r = getListViewConfig(slug)
+      if (r) { setConfig(r); observer.disconnect(); return }
+      if (readFromBridge()) observer.disconnect()
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+    const timeout = setTimeout(() => observer.disconnect(), 5000)
+
+    return () => { observer.disconnect(); clearTimeout(timeout) }
+  }, [slug])
+
+  if (!slug || !config) return null
 
   return (
     <CustomListView
@@ -52,17 +88,24 @@ interface ListViewConfigEntry {
 }
 
 /**
- * Global registry for list view configs. Populated by the ConfigInjector component.
- * Module-level (no React Context) to avoid Turbopack createContext issues.
+ * Global registry for list view configs. Populated by the ListViewsInitializer.
+ * Uses window.__aupListViews instead of module-level Map to ensure the same
+ * registry is shared across separately bundled files (tsup bundle: false).
  */
-const _registry = new Map<string, ListViewConfigEntry>()
+function getRegistry(): Map<string, ListViewConfigEntry> {
+  if (typeof window === 'undefined') return new Map()
+  if (!(window as any).__aupListViews) {
+    (window as any).__aupListViews = new Map()
+  }
+  return (window as any).__aupListViews
+}
 
 export function registerListViewConfig(slug: string, config: ListViewConfigEntry): void {
-  _registry.set(slug, config)
+  getRegistry().set(slug, config)
 }
 
 function getListViewConfig(slug: string): ListViewConfigEntry | undefined {
-  return _registry.get(slug)
+  return getRegistry().get(slug)
 }
 
 function extractCollectionSlug(): string | null {

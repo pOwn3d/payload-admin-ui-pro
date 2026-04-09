@@ -96,5 +96,11 @@ export const en = {
     // Status
     published: 'published',
     draft: 'draft',
+
+    // Inline editing
+    inlineEdit: 'Double-click to edit',
+    inlineSaving: 'Saving...',
+    inlineSaved: 'Saved',
+    inlineError: 'Save failed',
   },
 }

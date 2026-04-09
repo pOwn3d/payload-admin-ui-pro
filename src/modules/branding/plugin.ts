@@ -27,17 +27,27 @@ export function brandingModule(
       loginFooter: moduleConfig?.loginFooter || null,
     })
 
+    // Keep ConfigBridge in beforeLogin for fallback config values
     const existingBeforeLogin = config.admin.components.beforeLogin || []
     config.admin.components.beforeLogin = [
       {
         path: '@consilioweb/payload-admin-ui-pro/views#BrandingConfigBridge',
         clientProps: { config: brandingConfig },
       },
-      loginBackgroundPath,
       ...(Array.isArray(existingBeforeLogin) ? existingBeforeLogin : [existingBeforeLogin]),
     ]
 
-    // 2. Inject FaviconInjector into afterNavLinks (runs on every admin page)
+    // 2. Inject LoginBackground into providers so it also applies on
+    //    forgot password, reset password, and create-first-user pages.
+    //    The CSS targets .template-minimal (shared by all auth pages).
+    //    LoginBackground accepts children so it works as a provider.
+    const existingProviders = config.admin.components.providers || []
+    config.admin.components.providers = [
+      ...(Array.isArray(existingProviders) ? existingProviders : [existingProviders]),
+      loginBackgroundPath,
+    ]
+
+    // 3. Inject FaviconInjector into afterNavLinks (runs on every admin page)
     const faviconPath =
       pluginConfig.componentPaths?.faviconInjector ??
       '@consilioweb/payload-admin-ui-pro/client#FaviconInjector'
@@ -46,8 +56,7 @@ export function brandingModule(
     config.admin.components.afterNavLinks = [
       ...(Array.isArray(existingAfterNav) ? existingAfterNav : [existingAfterNav]),
       faviconPath,
-      // Auto-reload after settings save
-      '@consilioweb/payload-admin-ui-pro/client#SettingsReloader',
+      '@consilioweb/payload-admin-ui-pro/client#DarkModeToggle',
     ]
 
     // 3. Set titleSuffix if provided

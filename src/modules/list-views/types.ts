@@ -1,5 +1,5 @@
 /** Available view modes for list views */
-export type ViewMode = 'table' | 'cards' | 'gallery' | 'kanban'
+export type ViewMode = 'table' | 'cards' | 'gallery' | 'kanban' | 'calendar'
 
 /** Props passed to custom list view components */
 export interface ListViewComponentProps {
@@ -23,6 +23,7 @@ export interface ListViewComponentProps {
     titleField?: string
     subtitleField?: string
     statusField?: string
+    statusOptions?: string[]
   }
   /** Kanban config from plugin settings */
   kanbanConfig?: {
@@ -50,23 +51,25 @@ export function getCachedViewMode(collection: string): ViewMode | undefined {
   return _viewPrefs.get(collection)
 }
 
+const STORAGE_KEY = 'admin-ui-pro-view-prefs'
+
 export function setCachedViewMode(collection: string, mode: ViewMode): void {
   _viewPrefs.set(collection, mode)
-  // Also persist to sessionStorage
+  // Persist to localStorage (survives page reloads and browser restarts)
   try {
-    const stored = JSON.parse(sessionStorage.getItem('admin-ui-pro-view-prefs') || '{}')
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
     stored[collection] = mode
-    sessionStorage.setItem('admin-ui-pro-view-prefs', JSON.stringify(stored))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stored))
   } catch {
-    // sessionStorage may not be available
+    // localStorage may not be available
   }
 }
 
 export function loadCachedViewPrefs(): void {
   try {
-    const stored = JSON.parse(sessionStorage.getItem('admin-ui-pro-view-prefs') || '{}')
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
     for (const [key, value] of Object.entries(stored)) {
-      if (typeof value === 'string' && ['table', 'cards', 'gallery', 'kanban'].includes(value)) {
+      if (typeof value === 'string' && ['table', 'cards', 'gallery', 'kanban', 'calendar'].includes(value)) {
         _viewPrefs.set(key, value as ViewMode)
       }
     }

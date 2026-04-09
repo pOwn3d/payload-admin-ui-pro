@@ -96,5 +96,11 @@ export const fr = {
     // Status
     published: 'publie',
     draft: 'brouillon',
+
+    // Inline editing
+    inlineEdit: 'Double-cliquez pour modifier',
+    inlineSaving: 'Sauvegarde...',
+    inlineSaved: 'Sauvegarde',
+    inlineError: 'Echec de la sauvegarde',
   },
 }

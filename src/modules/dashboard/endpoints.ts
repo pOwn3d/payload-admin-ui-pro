@@ -1,6 +1,6 @@
 import type { Endpoint } from 'payload'
 import { VALIDATION_LIMITS } from '../../types.js'
-import { rateLimit, rateLimitResponse } from '../../utils/security.js'
+import { rateLimit, rateLimitKey, rateLimitResponse } from '../../utils/security.js'
 import type { DashboardLayout, WidgetInstance } from './types.js'
 
 /**
@@ -37,10 +37,16 @@ export function createDashboardEndpoints(
           const SKIP_SLUGS = new Set([
             collectionSlug, 'payload-preferences', 'payload-migrations',
             'payload-locked-documents', 'payload-jobs',
+            'redirects', 'forms', 'form-submissions', 'search',
+            'search-results', 'activity-log',
           ])
           // Patterns for plugin-internal collections
-          const SKIP_PREFIXES = ['seo-', 'spellcheck-', 'activity-log',
-            'admin-nav-', 'maintenance-', 'search-results']
+          const SKIP_PREFIXES = ['seo-', 'spellcheck-',
+            'admin-nav-', 'maintenance-', 'audit-log',
+            'canned-', 'email-log', 'auth-log', 'ticket',
+            'support-', 'webhook-', 'satisfaction-', 'sla-',
+            'knowledge-', 'macro', 'pending-email', 'chat-',
+          ]
 
           const collections = req.payload.config.collections
             .filter((col: any) => {
@@ -127,11 +133,17 @@ export function createDashboardEndpoints(
 
         let body: unknown
         try {
-          // Read the body from the request
-          const text = typeof req.text === 'function'
-            ? await req.text()
-            : JSON.stringify(req.data ?? req.json ?? {})
-          body = JSON.parse(typeof text === 'string' ? text : '{}')
+          // Read the body — try multiple approaches for Payload 3.x compat
+          if (typeof req.json === 'function') {
+            body = await req.json()
+          } else if (typeof req.text === 'function') {
+            const text = await req.text()
+            body = JSON.parse(text)
+          } else if ((req as any).body && typeof (req as any).body === 'object') {
+            body = (req as any).body
+          } else {
+            body = {}
+          }
         } catch {
           return new Response(
             JSON.stringify({ error: 'Invalid JSON body' }),
@@ -184,6 +196,113 @@ export function createDashboardEndpoints(
           return new Response(
             JSON.stringify({ error: 'Failed to save preferences' }),
             { status: 500 },
+          )
+        }
+      },
+    },
+
+    // GET — full-text search across collections
+    {
+      path: '/admin-ui-pro/search',
+      method: 'get' as const,
+      handler: async (req: any) => {
+        if (!req.user) {
+          return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
+        }
+
+        const key = `search:${req.user.id}`
+        if (!rateLimit(key, 30)) return rateLimitResponse()
+
+        const url = new URL(req.url, 'http://localhost')
+        const q = url.searchParams.get('q')?.trim() || ''
+        const collectionFilter = url.searchParams.get('collection')?.trim() || ''
+
+        if (q.length < 2) {
+          return new Response(
+            JSON.stringify({ error: 'Query must be at least 2 characters' }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } },
+          )
+        }
+
+        // Sanitize query — strip anything that could be problematic
+        const sanitizedQ = q.slice(0, 100).replace(/[<>"']/g, '')
+
+        try {
+          // Filter out internal/technical collections (same logic as /collections)
+          const SKIP_SLUGS = new Set([
+            collectionSlug, 'payload-preferences', 'payload-migrations',
+            'payload-locked-documents', 'payload-jobs',
+            'redirects', 'forms', 'form-submissions', 'search',
+            'search-results', 'activity-log',
+          ])
+          const SKIP_PREFIXES = ['seo-', 'spellcheck-',
+            'admin-nav-', 'maintenance-', 'audit-log',
+            'canned-', 'email-log', 'auth-log', 'ticket',
+            'support-', 'webhook-', 'satisfaction-', 'sla-',
+            'knowledge-', 'macro', 'pending-email', 'chat-',
+          ]
+
+          let searchableCollections = req.payload.config.collections
+            .filter((col: any) => {
+              if (col.admin?.hidden) return false
+              if (SKIP_SLUGS.has(col.slug)) return false
+              if (SKIP_PREFIXES.some((p: string) => col.slug.startsWith(p))) return false
+              return true
+            })
+            .map((col: any) => col.slug) as string[]
+
+          // If a specific collection is requested, filter to just that one
+          if (collectionFilter && searchableCollections.includes(collectionFilter)) {
+            searchableCollections = [collectionFilter]
+          }
+
+          // Limit to first 5 collections to avoid overloading
+          searchableCollections = searchableCollections.slice(0, 5)
+
+          const MAX_PER_COLLECTION = 5
+          const MAX_TOTAL = 15
+          const results: Array<{ id: string; title: string; collection: string; href: string }> = []
+
+          for (const slug of searchableCollections) {
+            if (results.length >= MAX_TOTAL) break
+
+            try {
+              const res = await req.payload.find({
+                collection: slug,
+                where: {
+                  or: [
+                    { title: { like: sanitizedQ } },
+                    { name: { like: sanitizedQ } },
+                  ],
+                },
+                limit: MAX_PER_COLLECTION,
+                depth: 0,
+              })
+
+              for (const doc of res.docs || []) {
+                if (results.length >= MAX_TOTAL) break
+                const title = doc.title || doc.name || doc.filename || doc.email || `#${doc.id}`
+                results.push({
+                  id: String(doc.id),
+                  title: String(title),
+                  collection: slug,
+                  href: `/admin/collections/${slug}/${doc.id}`,
+                })
+              }
+            } catch {
+              // Skip collections where the query fields don't exist
+              continue
+            }
+          }
+
+          return new Response(
+            JSON.stringify({ results }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          )
+        } catch {
+          return new Response(
+            JSON.stringify({ error: 'Search failed' }),
+            { status: 500, headers: { 'Content-Type': 'application/json' } },
           )
         }
       },
@@ -246,8 +365,8 @@ function validateLayout(body: unknown): true | string {
   if (!body || typeof body !== 'object') return 'Body must be an object'
   if (Array.isArray(body)) return 'Body must be an object, not an array'
 
-  // Block prototype pollution
-  if ('__proto__' in body || 'constructor' in body || 'prototype' in body) {
+  // Block prototype pollution (only check own properties)
+  if (Object.prototype.hasOwnProperty.call(body, '__proto__') || Object.prototype.hasOwnProperty.call(body, 'prototype')) {
     return 'Invalid payload'
   }
 

@@ -7,7 +7,7 @@ import React from 'react'
 export const SettingsNavLink: React.FC = () => {
   return (
     <a
-      href="/admin/globals/admin-ui-pro-settings"
+      href="/admin/globals/aup-settings"
       style={{
         display: 'flex',
         alignItems: 'center',

@@ -29,7 +29,7 @@ export const QuickActionsWidget: React.FC<WidgetProps> = () => {
         const actions: QuickLink[] = []
         const content = data.collections
           .map((c) => c.slug)
-          .filter((s) => !s.startsWith('payload-') && s !== 'dashboard-preferences' && s !== 'users')
+          .filter((s) => !s.startsWith('payload-') && s !== 'dashboard-preferences' && s !== 'users' && s !== 'media')
         for (const slug of content.slice(0, 4)) {
           const cfg = SLUG_ICONS[slug] || DEFAULT_ICON
           actions.push({ label: t('newItem', { label: formatLabel(slug) }), href: `/admin/collections/${slug}/create`, icon: cfg.icon, iconBg: cfg.bg })

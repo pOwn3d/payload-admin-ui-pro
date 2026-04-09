@@ -1,5 +1,7 @@
 import type { CollectionAfterChangeHook, CollectionAfterDeleteHook } from 'payload'
 import { SENSITIVE_FIELDS } from '../../types.js'
+import { executeNotificationRules } from './notificationRules.js'
+import type { NotificationRule, NotificationEvent } from './notificationRules.js'
 
 const SENSITIVE_SET = new Set<string>(SENSITIVE_FIELDS)
 
@@ -30,22 +32,35 @@ export function createAfterChangeHook(
 
       // Extract a display title
       const docTitle = extractTitle(doc)
+      const userName = req.user.email || req.user.name || `User ${req.user.id}`
+      const timestamp = new Date().toISOString()
+      const action = operation === 'create' ? 'create' : 'update'
 
       await req.payload.create({
         collection: logCollectionSlug,
         data: {
           user: req.user.id,
-          userName: req.user.email || req.user.name || `User ${req.user.id}`,
-          action: operation === 'create' ? 'create' : 'update',
+          userName,
+          action,
           collection: collectionSlug,
           docId: String(doc.id),
           docTitle,
           changedFields,
-          timestamp: new Date().toISOString(),
+          timestamp,
         },
         // Bypass access control — hooks create logs internally
         overrideAccess: true,
       })
+
+      // Fire notification rules (fire-and-forget, never blocks)
+      fireNotificationRulesFromSettings(req.payload, {
+        action,
+        collection: collectionSlug,
+        docId: String(doc.id),
+        docTitle,
+        userName,
+        timestamp,
+      }, doc as Record<string, unknown>)
     } catch {
       // Logging failure must never break the main operation
     }
@@ -67,21 +82,33 @@ export function createAfterDeleteHook(
 
     try {
       const docTitle = extractTitle(doc)
+      const userName = req.user.email || req.user.name || `User ${req.user.id}`
+      const timestamp = new Date().toISOString()
 
       await req.payload.create({
         collection: logCollectionSlug,
         data: {
           user: req.user.id,
-          userName: req.user.email || req.user.name || `User ${req.user.id}`,
+          userName,
           action: 'delete',
           collection: collectionSlug,
           docId: String(doc.id),
           docTitle,
           changedFields: [],
-          timestamp: new Date().toISOString(),
+          timestamp,
         },
         overrideAccess: true,
       })
+
+      // Fire notification rules (fire-and-forget, never blocks)
+      fireNotificationRulesFromSettings(req.payload, {
+        action: 'delete',
+        collection: collectionSlug,
+        docId: String(doc.id),
+        docTitle,
+        userName,
+        timestamp,
+      }, doc as Record<string, unknown>)
     } catch {
       // Logging failure must never break the main operation
     }
@@ -101,8 +128,10 @@ function getChangedFields(prev: Record<string, unknown>, next: Record<string, un
   for (const key of allKeys) {
     // Skip Payload internal fields
     if (key.startsWith('_') && key !== '_status') continue
-    // Skip sensitive fields
+    // Skip sensitive fields (exact match + pattern detection)
     if (SENSITIVE_SET.has(key)) continue
+    const lower = key.toLowerCase()
+    if (lower.includes('password') || lower.includes('secret') || lower.includes('token') || lower.includes('apikey')) continue
     // Skip timestamps (always change)
     if (key === 'updatedAt' || key === 'createdAt') continue
 
@@ -124,4 +153,51 @@ function extractTitle(doc: Record<string, unknown>): string {
   if (typeof doc.filename === 'string') return doc.filename
   if (typeof doc.email === 'string') return doc.email
   return `#${doc.id}`
+}
+
+/**
+ * Read notification rules from AdminUiPro settings and execute them.
+ * Fully fire-and-forget — errors are silently swallowed.
+ * Uses a simple in-memory cache (60s TTL) to avoid reading the global on every hook.
+ */
+let _rulesCache: { rules: NotificationRule[]; expiry: number } | null = null
+const RULES_CACHE_TTL_MS = 60_000
+
+function fireNotificationRulesFromSettings(
+  payload: any,
+  event: NotificationEvent,
+  doc?: Record<string, unknown>,
+): void {
+  const now = Date.now()
+
+  // If cache is fresh, use it directly
+  if (_rulesCache && now < _rulesCache.expiry) {
+    executeNotificationRules(_rulesCache.rules, event, doc)
+    return
+  }
+
+  // Otherwise fetch settings async and fire rules when ready
+  payload
+    .findGlobal({ slug: 'aup-settings', depth: 0 })
+    .then((settings: any) => {
+      const rawRules = settings?.activityConfig?.notificationRules
+      const rules: NotificationRule[] = Array.isArray(rawRules)
+        ? rawRules.map((r: any) => ({
+            id: r.id,
+            event: r.event,
+            collection: r.collection || '*',
+            channel: r.channel,
+            webhookUrl: r.webhookUrl,
+            // Normalize flat condition fields into the condition object
+            condition: r.conditionField && r.conditionEquals
+              ? { field: r.conditionField, equals: r.conditionEquals }
+              : undefined,
+          }))
+        : []
+      _rulesCache = { rules, expiry: Date.now() + RULES_CACHE_TTL_MS }
+      executeNotificationRules(rules, event, doc)
+    })
+    .catch(() => {
+      // Settings read failure must never surface
+    })
 }

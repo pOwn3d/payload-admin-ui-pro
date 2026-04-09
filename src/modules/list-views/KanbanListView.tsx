@@ -2,6 +2,7 @@
 
 import React, { useCallback, useState } from 'react'
 import type { ListViewComponentProps } from './types.js'
+import { InlineEditCell } from './InlineEditCell.js'
 
 /**
  * Kanban list view — drag & drop columns by status field value.
@@ -41,9 +42,10 @@ export const KanbanListView: React.FC<ListViewComponentProps> = ({
 
   const handleDrop = useCallback(
     async (targetColumn: string) => {
-      if (!draggedId) return
+      if (!draggedId || updating) return
+      const currentDraggedId = draggedId // Capture before state change
 
-      const doc = items.find((d) => d.id === draggedId)
+      const doc = items.find((d) => d.id === currentDraggedId)
       if (!doc || String(doc[statusField]) === targetColumn) {
         setDraggedId(null)
         return
@@ -52,15 +54,15 @@ export const KanbanListView: React.FC<ListViewComponentProps> = ({
       // Optimistic update
       setItems((prev) =>
         prev.map((d) =>
-          d.id === draggedId ? { ...d, [statusField]: targetColumn } : d,
+          d.id === currentDraggedId ? { ...d, [statusField]: targetColumn } : d,
         ),
       )
       setDraggedId(null)
-      setUpdating(draggedId)
+      setUpdating(currentDraggedId)
 
       // Persist via Payload REST API
       try {
-        const res = await fetch(`/api/${collection}/${draggedId}`, {
+        const res = await fetch(`/api/${collection}/${currentDraggedId}`, {
           method: 'PATCH',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -70,7 +72,7 @@ export const KanbanListView: React.FC<ListViewComponentProps> = ({
           // Revert on failure
           setItems((prev) =>
             prev.map((d) =>
-              d.id === draggedId ? doc : d,
+              d.id === currentDraggedId ? doc : d,
             ),
           )
         }
@@ -88,6 +90,22 @@ export const KanbanListView: React.FC<ListViewComponentProps> = ({
     [draggedId, items, collection, statusField],
   )
 
+  const handleInlineTitleSaved = useCallback(
+    (docId: string | number, newValue: string | number) => {
+      setItems((prev) =>
+        prev.map((d) => {
+          if (d.id === docId) {
+            // Update whichever title field exists
+            const field = d.title != null ? 'title' : d.name != null ? 'name' : d.subject != null ? 'subject' : 'title'
+            return { ...d, [field]: newValue }
+          }
+          return d
+        }),
+      )
+    },
+    [],
+  )
+
   // Sync docs when parent data changes
   React.useEffect(() => {
     setItems(docs)
@@ -98,13 +116,14 @@ export const KanbanListView: React.FC<ListViewComponentProps> = ({
   }
 
   return (
-    <div style={boardStyle}>
+    <div className="aup-kanban-board" style={boardStyle}>
       {columns.map((column) => {
         const columnDocs = grouped.get(column) || []
 
         return (
           <div
             key={column}
+            className="aup-kanban-column"
             style={columnStyle}
             onDragOver={(e) => e.preventDefault()}
             onDrop={() => handleDrop(column)}
@@ -136,11 +155,24 @@ export const KanbanListView: React.FC<ListViewComponentProps> = ({
                       href={`/admin/collections/${collection}/${doc.id}`}
                       style={cardLinkStyle}
                       onClick={(e) => {
-                        // Prevent navigation during drag
+                        // Prevent navigation during drag or inline edit
                         if (draggedId) e.preventDefault()
+                        const target = e.target as HTMLElement
+                        if (target.closest('[data-inline-edit]')) e.preventDefault()
                       }}
                     >
-                      <span style={cardTitleStyle}>{title}</span>
+                      <span style={cardTitleStyle} data-inline-edit>
+                        <InlineEditCell
+                          collection={collection}
+                          docId={doc.id}
+                          fieldName={resolveTitleField(doc)}
+                          value={title}
+                          type="text"
+                          onSaved={(newVal) =>
+                            handleInlineTitleSaved(doc.id, newVal)
+                          }
+                        />
+                      </span>
                       {typeof doc.updatedAt === 'string' && (
                         <span style={cardMetaStyle}>
                           {timeAgo(doc.updatedAt)}
@@ -185,6 +217,13 @@ function resolveTitle(doc: Record<string, unknown>): string {
     (doc.subject as string) ||
     `#${doc.id}`
   )
+}
+
+function resolveTitleField(doc: Record<string, unknown>): string {
+  if (doc.title != null) return 'title'
+  if (doc.name != null) return 'name'
+  if (doc.subject != null) return 'subject'
+  return 'title'
 }
 
 function formatColumn(col: string): string {

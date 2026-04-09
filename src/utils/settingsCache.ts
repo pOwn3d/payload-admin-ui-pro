@@ -10,7 +10,7 @@ const CACHE_TTL = 60_000 // 60 seconds
  * Fetch the AdminUiPro settings global. Uses module-level cache.
  */
 export async function fetchSettings(
-  globalSlug: string = 'admin-ui-pro-settings',
+  globalSlug: string = 'aup-settings',
 ): Promise<AdminUiProSettingsData | null> {
   const now = Date.now()
 

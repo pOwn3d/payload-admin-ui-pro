@@ -83,6 +83,41 @@ export function activityModule(
       return modifiedCol
     })
 
+    // 4. Inject DocumentTimeline + VersionDiff into afterDocument on tracked collections
+    config.collections = config.collections.map((col) => {
+      if (skipCollections.has(col.slug)) return col
+      if (targetCollections && !targetCollections.includes(col.slug)) return col
+
+      const modCol = { ...col }
+      modCol.admin = { ...modCol.admin }
+      modCol.admin.components = { ...modCol.admin?.components }
+      const existingAfterDoc = modCol.admin.components.afterDocument || []
+      const afterDocComponents = [
+        ...(Array.isArray(existingAfterDoc) ? existingAfterDoc : [existingAfterDoc]),
+        '@consilioweb/payload-admin-ui-pro/client#DocumentTimeline',
+        '@consilioweb/payload-admin-ui-pro/client#PresenceIndicator',
+      ]
+
+      // Inject VersionDiff only on collections that have versions enabled
+      if (col.versions) {
+        afterDocComponents.push(
+          '@consilioweb/payload-admin-ui-pro/client#VersionDiff',
+        )
+      }
+
+      modCol.admin.components.afterDocument = afterDocComponents
+      return modCol
+    })
+
+    // 5. Inject NotificationBell into afterNavLinks
+    config.admin = { ...config.admin }
+    config.admin.components = { ...config.admin.components }
+    const existingAfterNav = config.admin.components.afterNavLinks || []
+    config.admin.components.afterNavLinks = [
+      ...(Array.isArray(existingAfterNav) ? existingAfterNav : [existingAfterNav]),
+      '@consilioweb/payload-admin-ui-pro/client#NotificationBell',
+    ]
+
     return config
   }
 }

@@ -1,7 +1,10 @@
 'use client'
 
-import React from 'react'
+import React, { useCallback, useState } from 'react'
 import type { ListViewComponentProps } from './types.js'
+import { useBulkSelect } from './useBulkSelect.js'
+import { BulkActionBar } from './BulkActionBar.js'
+import { InlineEditCell } from './InlineEditCell.js'
 
 /**
  * Card list view — displays documents as visual cards.
@@ -23,6 +26,40 @@ export const CardListView: React.FC<ListViewComponentProps> = ({
   const imageField = cardConfig?.imageField || 'heroImage'
   const statusField = cardConfig?.statusField || '_status'
   const totalPages = Math.ceil(totalDocs / limit)
+  const allIds = docs.map((d) => String(d.id))
+  const bulk = useBulkSelect(allIds)
+  const [localDocs, setLocalDocs] = useState(docs)
+
+  // Sync when parent docs change
+  React.useEffect(() => {
+    setLocalDocs(docs)
+  }, [docs])
+
+  const handleBulkComplete = useCallback(() => {
+    bulk.deselectAll()
+    onPageChange(page) // Refresh
+  }, [bulk, onPageChange, page])
+
+  const handleInlineSaved = useCallback(
+    (docId: string | number, fieldName: string, newValue: string | number) => {
+      setLocalDocs((prev) =>
+        prev.map((d) =>
+          d.id === docId ? { ...d, [fieldName]: newValue } : d,
+        ),
+      )
+    },
+    [],
+  )
+
+  const handleCardClick = useCallback(
+    (e: React.MouseEvent, docId: string | number) => {
+      // Only navigate on single click, not when clicking inline edit elements
+      const target = e.target as HTMLElement
+      if (target.closest('[data-inline-edit]')) return
+      window.location.href = `/admin/collections/${collection}/${docId}`
+    },
+    [collection],
+  )
 
   if (loading) {
     return <div style={loadingStyle}>Loading...</div>
@@ -32,17 +69,39 @@ export const CardListView: React.FC<ListViewComponentProps> = ({
     <div>
       {/* Card grid */}
       <div style={gridStyle}>
-        {docs.map((doc) => {
+        {localDocs.map((doc) => {
           const title = resolveField(doc, titleField) || `#${doc.id}`
           const subtitle = resolveField(doc, subtitleField)
           const status = resolveField(doc, statusField)
           const imageUrl = resolveImageUrl(doc, imageField)
 
+          const docId = String(doc.id)
+          const isChecked = bulk.isSelected(docId)
+          const statusOptions = cardConfig?.statusOptions || ['draft', 'published']
           return (
-            <a
-              key={doc.id}
-              href={`/admin/collections/${collection}/${doc.id}`}
-              style={cardStyle}
+            <div key={doc.id} style={{ position: 'relative' }}>
+              {/* Bulk select checkbox */}
+              <input
+                type="checkbox"
+                checked={isChecked}
+                onChange={() => bulk.toggle(docId)}
+                style={checkboxStyle}
+                aria-label={`Select ${title}`}
+              />
+            <div
+              onClick={(e) => handleCardClick(e, doc.id)}
+              style={{
+                ...cardStyle,
+                cursor: 'pointer',
+                ...(isChecked ? { borderColor: 'var(--aup-accent)', boxShadow: '0 0 0 2px var(--aup-accent-subtle)' } : {}),
+              }}
+              role="link"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  window.location.href = `/admin/collections/${collection}/${doc.id}`
+                }
+              }}
             >
               {/* Image */}
               {imageUrl ? (
@@ -56,28 +115,68 @@ export const CardListView: React.FC<ListViewComponentProps> = ({
                 </div>
               ) : (
                 <div style={placeholderStyle}>
-                  <span style={placeholderIconStyle}>📄</span>
+                  <span style={placeholderIconStyle}>{'\uD83D\uDCC4'}</span>
                 </div>
               )}
 
               {/* Content */}
               <div style={contentStyle}>
-                <h3 style={cardTitleStyle}>{title}</h3>
+                <h3 style={cardTitleStyle}>
+                  <span data-inline-edit>
+                    <InlineEditCell
+                      collection={collection}
+                      docId={doc.id}
+                      fieldName={titleField}
+                      value={title}
+                      type="text"
+                      onSaved={(newVal) =>
+                        handleInlineSaved(doc.id, titleField, newVal)
+                      }
+                    />
+                  </span>
+                </h3>
                 {subtitle && (
                   <p style={subtitleStyle}>
                     {isDateString(subtitle) ? formatDate(subtitle) : subtitle}
                   </p>
                 )}
                 {status && (
-                  <span style={badgeStyle(status as string)}>
-                    {status as string}
+                  <span data-inline-edit style={{ display: 'inline-block', marginTop: '0.5rem' }}>
+                    <InlineEditCell
+                      collection={collection}
+                      docId={doc.id}
+                      fieldName={statusField}
+                      value={status as string}
+                      type="select"
+                      options={statusOptions}
+                      onSaved={(newVal) =>
+                        handleInlineSaved(doc.id, statusField, newVal)
+                      }
+                    >
+                      <span style={badgeStyle(status as string)}>
+                        {status as string}
+                      </span>
+                    </InlineEditCell>
                   </span>
                 )}
               </div>
-            </a>
+            </div>
+            </div>
           )
         })}
       </div>
+
+      {/* Bulk action bar */}
+      <BulkActionBar
+        count={bulk.count}
+        collection={collection}
+        selectedIds={Array.from(bulk.selected)}
+        statusField={statusField}
+        statusOptions={['draft', 'published']}
+        onComplete={handleBulkComplete}
+        onSelectAll={bulk.selectAll}
+        onDeselectAll={bulk.deselectAll}
+      />
 
       {/* Empty state */}
       {docs.length === 0 && (
@@ -170,6 +269,7 @@ function formatDate(dateStr: string): string {
 
 function badgeStyle(status: string): React.CSSProperties {
   const isPublished = status === 'published' || status === 'active'
+  const isError = status === 'error' || status === 'rejected' || status === 'failed'
   return {
     display: 'inline-block',
     fontSize: '0.6875rem',
@@ -178,11 +278,15 @@ function badgeStyle(status: string): React.CSSProperties {
     borderRadius: '9999px',
     marginTop: '0.5rem',
     backgroundColor: isPublished
-      ? 'var(--color-success-100, #dcfce7)'
-      : 'var(--color-warning-100, #fef3c7)',
+      ? 'var(--aup-green-subtle)'
+      : isError
+        ? 'var(--aup-red-subtle)'
+        : 'var(--aup-amber-subtle)',
     color: isPublished
-      ? 'var(--color-success-700, #15803d)'
-      : 'var(--color-warning-700, #a16207)',
+      ? 'var(--aup-green)'
+      : isError
+        ? 'var(--aup-red)'
+        : 'var(--aup-amber)',
   }
 }
 
@@ -279,4 +383,13 @@ const pageBtnStyle: React.CSSProperties = {
 const pageInfoStyle: React.CSSProperties = {
   fontSize: '0.8125rem',
   color: 'var(--theme-elevation-500)',
+}
+
+const checkboxStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: '8px', left: '8px',
+  zIndex: 5,
+  width: '18px', height: '18px',
+  cursor: 'pointer',
+  accentColor: 'var(--aup-accent)',
 }

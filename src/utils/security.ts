@@ -86,6 +86,7 @@ export function validateTextField(value: string, maxLength?: number): true | str
  * Rate limiter — in-memory, per-key, with auto-cleanup.
  * Pattern borrowed from admin-nav.
  */
+const MAX_STORE_SIZE = 10_000
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>()
 
 // Cleanup expired entries every 60s
@@ -104,6 +105,16 @@ export function rateLimit(key: string, maxRequests: number, windowMs: number = 6
   const entry = rateLimitStore.get(key)
 
   if (!entry || entry.resetAt <= now) {
+    // Prevent unbounded memory growth
+    if (rateLimitStore.size >= MAX_STORE_SIZE) {
+      // Evict oldest entries
+      const keysToDelete: string[] = []
+      for (const [k, v] of rateLimitStore) {
+        if (v.resetAt <= now) keysToDelete.push(k)
+        if (keysToDelete.length >= 1000) break
+      }
+      keysToDelete.forEach((k) => rateLimitStore.delete(k))
+    }
     rateLimitStore.set(key, { count: 1, resetAt: now + windowMs })
     return true
   }
@@ -111,6 +122,18 @@ export function rateLimit(key: string, maxRequests: number, windowMs: number = 6
   if (entry.count >= maxRequests) return false
   entry.count++
   return true
+}
+
+/**
+ * Extract rate limit key from request.
+ * Uses IP + user ID for per-user per-IP limiting.
+ */
+export function rateLimitKey(req: { headers: Headers; user?: { id?: string } }, prefix: string): string {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || req.headers.get('x-real-ip')
+    || 'unknown'
+  const userId = req.user?.id || 'anon'
+  return `${prefix}:${ip}:${userId}`
 }
 
 export function rateLimitResponse() {

@@ -22,7 +22,9 @@ export const CollectionOverviewWidget: React.FC<WidgetProps> = ({ id }) => {
 
   // Extract collection slug from widget instance id
   // Convention: "collection-overview-{slug}" or just use first available collection
-  const collectionSlug = id.replace(/^collection-overview-?/, '') || 'posts'
+  const extracted = id.replace(/^collection-overview-?/, '')
+  // If extracted is a number (timestamp from "add widget"), fallback to 'posts'
+  const collectionSlug = extracted && /^[a-z]/.test(extracted) ? extracted : 'posts'
 
   useEffect(() => {
     let mounted = true

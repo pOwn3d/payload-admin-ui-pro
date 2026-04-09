@@ -46,6 +46,9 @@ export function generateThemeCSS(theme: ThemePreset): string {
   --aup-amber-subtle: ${d.amberSubtle} !important;
   --aup-red: ${d.red} !important;
   --aup-red-subtle: ${d.redSubtle} !important;
+  --aup-gradient-accent: linear-gradient(135deg, ${d.accent} 0%, ${c.accentHover} 100%) !important;
+  --aup-gradient-mesh: radial-gradient(ellipse at 20% 50%, ${d.accent}15 0%, transparent 60%),
+                       radial-gradient(ellipse at 80% 20%, ${c.accentHover}10 0%, transparent 50%) !important;
 }
 
 /* Nav accent override for this theme */
@@ -54,10 +57,18 @@ export function generateThemeCSS(theme: ThemePreset): string {
   --admin-nav-active-bg: ${c.accentSubtle} !important;
   --admin-nav-active-text: ${c.accent} !important;
 }
+[data-theme="dark"] {
+  --admin-nav-active-border: ${d.accent} !important;
+  --admin-nav-active-bg: ${d.accentSubtle} !important;
+  --admin-nav-active-text: ${d.accent} !important;
+}
 
 /* Toggle switches */
 button[role="switch"][aria-checked="true"] {
   background-color: ${c.accent} !important;
+}
+[data-theme="dark"] button[role="switch"][aria-checked="true"] {
+  background-color: ${d.accent} !important;
 }
 `
 }

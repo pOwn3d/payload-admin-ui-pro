@@ -31,3 +31,10 @@ export type {
 } from './types.js'
 
 export { SENSITIVE_FIELDS, VALIDATION_LIMITS } from './types.js'
+
+// RBAC (server-side access control)
+export { resolvePermissions, resolvePermissionsAsync, hasPermission } from './utils/rbac.js'
+export type { AupPermissions, PermissionLevel, AupModule, PermissionsCallback } from './utils/rbac.js'
+
+// Widget registry type (re-export for convenience — component is client-only)
+export type { WidgetDefinition } from './modules/dashboard/widgetRegistry.js'

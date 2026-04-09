@@ -44,10 +44,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ customActions })
   const [query, setQuery] = useState('')
   const t = useAupT()
   const [items, setItems] = useState<PaletteItem[]>([])
+  const [searchResults, setSearchResults] = useState<PaletteItem[]>([])
+  const [isSearching, setIsSearching] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [shortcutKey, setShortcutKey] = useState('k') // default ⌘K
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const [maxRecentDocs, setMaxRecentDocs] = useState(10)
 
@@ -191,12 +195,80 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ customActions })
     }
   }, [open])
 
+  // ── Debounced full-text search ────────────────────────────────────
+  useEffect(() => {
+    // Cancel any pending timer
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current)
+      searchTimerRef.current = null
+    }
+
+    // Clear results when query is too short
+    if (query.length < 3) {
+      setSearchResults([])
+      setIsSearching(false)
+      return
+    }
+
+    setIsSearching(true)
+
+    searchTimerRef.current = setTimeout(() => {
+      // Abort any in-flight request
+      if (abortRef.current) abortRef.current.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
+
+      fetch(`/api/admin-ui-pro/search?q=${encodeURIComponent(query)}`, {
+        credentials: 'include',
+        signal: controller.signal,
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error('Search failed')
+          return res.json()
+        })
+        .then((data: { results: Array<{ id: string; title: string; collection: string; href: string }> }) => {
+          if (controller.signal.aborted) return
+          const mapped: PaletteItem[] = (data.results || []).map((r) => ({
+            id: `search-${r.collection}-${r.id}`,
+            label: r.title,
+            category: t('searchResults'),
+            href: r.href,
+            icon: '🔎',
+          }))
+          setSearchResults(mapped)
+          setIsSearching(false)
+        })
+        .catch((err) => {
+          if (err?.name === 'AbortError') return
+          setSearchResults([])
+          setIsSearching(false)
+        })
+    }, 300)
+
+    return () => {
+      if (searchTimerRef.current) {
+        clearTimeout(searchTimerRef.current)
+        searchTimerRef.current = null
+      }
+    }
+  }, [query])
+
+  // ── Cleanup abort controller on unmount ──────────────────────────
+  useEffect(() => {
+    return () => {
+      if (abortRef.current) abortRef.current.abort()
+    }
+  }, [])
+
   // ── Filter items by query ────────────────────────────────────────
-  const filtered = query.length === 0
+  const staticFiltered = query.length === 0
     ? items.slice(0, 20)
     : items.filter((item) =>
         fuzzyMatch(query.toLowerCase(), item.label.toLowerCase()),
       ).slice(0, 20)
+
+  // Merge: search results first, then static results
+  const filtered = [...searchResults, ...staticFiltered].slice(0, 25)
 
   // ── Keyboard navigation ──────────────────────────────────────────
   const handleKeyDown = useCallback(
@@ -268,7 +340,22 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ customActions })
 
         {/* Results */}
         <div ref={listRef} style={{ maxHeight: '360px', overflowY: 'auto', padding: '8px 0' }}>
-          {filtered.length === 0 ? (
+          {/* Searching indicator */}
+          {isSearching && (
+            <div style={{
+              padding: '6px 20px', fontSize: '12px', color: 'var(--theme-text)',
+              opacity: 0.5, display: 'flex', alignItems: 'center', gap: '8px',
+            }}>
+              <span style={{
+                display: 'inline-block', width: '12px', height: '12px',
+                border: '2px solid var(--theme-text)', borderTopColor: 'transparent',
+                borderRadius: '50%', animation: 'aup-spin 0.6s linear infinite',
+                opacity: 0.4,
+              }} />
+              {t('searching')}
+            </div>
+          )}
+          {filtered.length === 0 && !isSearching ? (
             <div style={{ padding: '2rem 20px', textAlign: 'center', color: 'var(--theme-text)', opacity: 0.4, fontSize: '14px' }}>
               {t('noResults', { query })}
             </div>
