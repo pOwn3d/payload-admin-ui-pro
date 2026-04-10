@@ -290,14 +290,23 @@ export const DESIGN_TOKENS_CSS = `
 }
 
 /* ── Responsive Grid ──────────────────────────── */
-.aup-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+/* 12 columns x auto-rows of 90px allows widgets to span both axes (w*h).
+ * grid-auto-flow:dense fills holes so a tall card on the left and two short
+ * cards on the right line up automatically. */
+.aup-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-rows: 90px;
+  grid-auto-flow: dense;
+  gap: 16px;
+}
 @media (max-width: 1024px) {
-  .aup-grid { grid-template-columns: repeat(6, 1fr); }
+  .aup-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .aup-grid > * { grid-column: span 6 !important; }
 }
 @media (max-width: 640px) {
-  .aup-grid { grid-template-columns: 1fr; }
-  .aup-grid > * { grid-column: span 1 !important; }
+  .aup-grid { grid-template-columns: minmax(0, 1fr); }
+  .aup-grid > * { grid-column: span 1 !important; grid-row: auto !important; }
   .aup-actions-grid { grid-template-columns: 1fr; }
 }
 

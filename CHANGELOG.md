@@ -1,6 +1,25 @@
 # Changelog
 
-## 0.2.0 (2026-04-09)
+## 0.2.1 (2026-04-10)
+
+### New Features
+
+#### Dashboard — Bento layout & 2D resize
+- **2D grid layout**: widgets can now span both columns AND rows (`w` × `h`).
+  Grid uses `grid-auto-rows: 90px` + `grid-auto-flow: dense` so a tall card on
+  the left lines up automatically with two short cards stacked on the right.
+- **Mouse-driven resize handle**: drag from the bottom-right corner of any
+  widget in edit mode to resize on both axes. Snaps to grid units, bounded
+  to `w∈[2,12]` and `h∈[1,8]`.
+- `addWidget()` now honors the `defaultSize` from `registerWidget()` instead
+  of always creating new widgets at 6×2.
+- `resizeWidget(id, w, h?)` accepts an optional height parameter.
+
+### Fixes
+
+- `.aup-grid` columns now use `minmax(0, 1fr)` instead of `1fr` so widgets
+  with long content can no longer push columns past their share of the
+  container width.
 
 ### New Features
 

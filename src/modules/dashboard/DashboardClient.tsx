@@ -139,8 +139,19 @@ export const DashboardClient: React.FC = () => {
   }, [])
 
   const addWidget = useCallback((slug: string) => {
+    // Honor defaultSize from custom widget registration when present
+    const customWidget = getRegisteredWidgets().find((w) => w.id === slug)
+    const defaultW = customWidget?.defaultSize?.w ?? 6
+    const defaultH = customWidget?.defaultSize?.h ?? 2
     const maxY = widgets.reduce((max, w) => Math.max(max, w.y + w.h), 0)
-    const newWidget: WidgetInstance = { id: `${slug}-${Date.now()}`, widget: slug, x: 0, y: maxY, w: 6, h: 2 }
+    const newWidget: WidgetInstance = {
+      id: `${slug}-${Date.now()}`,
+      widget: slug,
+      x: 0,
+      y: maxY,
+      w: defaultW,
+      h: defaultH,
+    }
     const updated = [...widgets, newWidget]
     setWidgets(updated)
     saveLayout(updated)
@@ -152,8 +163,12 @@ export const DashboardClient: React.FC = () => {
     saveLayout(updated)
   }, [widgets, saveLayout])
 
-  const resizeWidget = useCallback((id: string, newW: number) => {
-    const updated = widgets.map((w) => w.id === id ? { ...w, w: newW } : w)
+  const resizeWidget = useCallback((id: string, newW: number, newH?: number) => {
+    const updated = widgets.map((w) =>
+      w.id === id
+        ? { ...w, w: newW, h: typeof newH === 'number' ? Math.max(1, newH) : w.h }
+        : w,
+    )
     setWidgets(updated)
     saveLayout(updated)
   }, [widgets, saveLayout])
@@ -307,12 +322,20 @@ const SIZE_PRESETS = [
   { label: 'Full', w: 12, icon: '█' },
 ]
 
+/** Grid row height (matches `grid-auto-rows` in tokens.ts) + grid gap */
+const ROW_HEIGHT = 90
+const GRID_GAP = 16
+const MIN_W = 2
+const MIN_H = 1
+const MAX_W = 12
+const MAX_H = 8
+
 /** Sortable widget wrapper using @dnd-kit */
 const SortableWidget: React.FC<{
   instance: WidgetInstance
   editing: boolean
   onRemove: (id: string) => void
-  onResize: (id: string, w: number) => void
+  onResize: (id: string, w: number, h?: number) => void
 }> = ({ instance, editing, onRemove, onResize }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: instance.id })
 
@@ -327,15 +350,64 @@ const SortableWidget: React.FC<{
     meta = { icon: customWidget.icon, title: customWidget.name, iconBg: customWidget.iconBg }
   }
 
+  const safeW = Math.min(Math.max(instance.w, MIN_W), MAX_W)
+  const safeH = Math.min(Math.max(instance.h, MIN_H), MAX_H)
+
   const style: React.CSSProperties = {
-    gridColumn: `span ${Math.min(instance.w, 12)}`,
+    gridColumn: `span ${safeW}`,
+    gridRow: `span ${safeH}`,
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
     cursor: editing ? 'grab' : 'default',
     outline: editing ? '2px dashed var(--aup-accent-border)' : 'none',
     position: 'relative',
-    minHeight: instance.h <= 2 ? '160px' : '240px',
+    minHeight: 0,
+    overflow: 'hidden',
+  }
+
+  // ── Mouse-driven resize from bottom-right handle ──────────────────────
+  const handleResizeMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    const cardEl = (e.currentTarget as HTMLElement).closest('.aup-widget-card') as HTMLElement | null
+    const gridEl = cardEl?.parentElement as HTMLElement | null
+    if (!cardEl || !gridEl) return
+
+    const startX = e.clientX
+    const startY = e.clientY
+    const startW = instance.w
+    const startH = instance.h
+    // Approx column width based on the live grid
+    const colCount = 12
+    const totalGap = GRID_GAP * (colCount - 1)
+    const colWidth = (gridEl.clientWidth - totalGap) / colCount
+    const rowStep = ROW_HEIGHT + GRID_GAP
+
+    let lastW = startW
+    let lastH = startH
+
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX
+      const dy = ev.clientY - startY
+      const newW = Math.max(MIN_W, Math.min(MAX_W, Math.round(startW + dx / colWidth)))
+      const newH = Math.max(MIN_H, Math.min(MAX_H, Math.round(startH + dy / rowStep)))
+      if (newW !== lastW || newH !== lastH) {
+        lastW = newW
+        lastH = newH
+        onResize(instance.id, newW, newH)
+      }
+    }
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.body.style.cursor = 'nwse-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
   }
 
   return (
@@ -347,7 +419,7 @@ const SortableWidget: React.FC<{
     >
       {editing && (
         <div style={editControlsStyle}>
-          {/* Size selector */}
+          {/* Size selector — width presets */}
           <div style={sizeControlsStyle}>
             {SIZE_PRESETS.map((preset) => (
               <button
@@ -383,6 +455,23 @@ const SortableWidget: React.FC<{
       <div className="aup-widget-content">
         <WidgetComponent id={instance.id} slug={instance.widget} width={instance.w} height={instance.h} />
       </div>
+
+      {/* Bottom-right resize handle (mouse drag → w + h) */}
+      {editing && (
+        <div
+          role="button"
+          aria-label="Resize widget"
+          title={`Glissez pour redimensionner (${instance.w}×${instance.h})`}
+          onMouseDown={handleResizeMouseDown}
+          // Prevent dnd-kit from picking this up as a drag
+          onPointerDown={(e) => e.stopPropagation()}
+          style={resizeHandleStyle}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M13 4L4 13M13 8L8 13M13 12L12 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </div>
+      )}
     </div>
   )
 }
@@ -411,6 +500,25 @@ const removeBtnStyle: React.CSSProperties = {
   width: '22px', height: '22px', borderRadius: '50%', border: 'none',
   background: 'var(--aup-red)', color: '#fff', fontSize: '14px', lineHeight: 1,
   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+}
+
+const resizeHandleStyle: React.CSSProperties = {
+  position: 'absolute',
+  bottom: 0,
+  right: 0,
+  width: 20,
+  height: 20,
+  display: 'flex',
+  alignItems: 'flex-end',
+  justifyContent: 'flex-end',
+  padding: 3,
+  cursor: 'nwse-resize',
+  color: 'var(--aup-accent, #2563eb)',
+  background:
+    'linear-gradient(135deg, transparent 50%, var(--aup-accent-subtle, rgba(37,99,235,0.18)) 50%)',
+  borderRadius: '0 0 8px 0',
+  zIndex: 11,
+  touchAction: 'none',
 }
 
 function formatSlug(slug: string): string {
