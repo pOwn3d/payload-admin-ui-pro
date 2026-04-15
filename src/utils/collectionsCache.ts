@@ -44,11 +44,15 @@ export async function fetchCollections(): Promise<CollectionsData | null> {
     })
     .then((data) => {
       _cached = data
+      // Cache null results (401, etc.) with same TTL to prevent infinite retry loops
       _timestamp = Date.now()
       _promise = null
       return data
     })
     .catch(() => {
+      // Cache the failure to prevent immediate retry loops
+      _cached = null
+      _timestamp = Date.now()
       _promise = null
       return null
     })

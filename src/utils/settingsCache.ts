@@ -36,6 +36,9 @@ export async function fetchSettings(
       return data
     })
     .catch(() => {
+      // Cache the failure to prevent immediate retry loops on 401/network errors
+      _cachedSettings = null
+      _cacheTimestamp = Date.now()
       _cachePromise = null
       return null
     })

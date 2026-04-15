@@ -275,7 +275,7 @@ adminUiProPlugin({
 
 ## Works with
 
-- ✅ [**@consilioweb/admin-nav**](https://www.npmjs.com/package/@consilioweb/admin-nav) — Custom sidebar navigation
+- ✅ [**@consilioweb/payload-admin-nav**](https://www.npmjs.com/package/@consilioweb/payload-admin-nav) — Custom sidebar navigation
 - ✅ [**@consilioweb/payload-admin-theme**](https://www.npmjs.com/package/@consilioweb/payload-admin-theme) — Admin theme framework
 - ✅ **@payloadcms/plugin-seo** — SEO plugin
 - ✅ **@payloadcms/plugin-form-builder** — Form builder

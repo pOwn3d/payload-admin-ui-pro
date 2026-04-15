@@ -10,7 +10,7 @@
  * - Activity feed / audit trail
  *
  * Each module is independently activatable.
- * Optionally integrates with @consilioweb/payload-admin-theme and @consilioweb/admin-nav.
+ * Optionally integrates with @consilioweb/payload-admin-theme and @consilioweb/payload-admin-nav.
  *
  * Usage:
  *   import { adminUiProPlugin } from '@consilioweb/payload-admin-ui-pro'

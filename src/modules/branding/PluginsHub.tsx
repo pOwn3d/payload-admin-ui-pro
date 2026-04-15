@@ -22,27 +22,27 @@ interface PluginState extends PluginInfo {
 const CONSILIOWEB_PLUGINS: PluginInfo[] = [
   {
     name: 'Admin Nav',
-    package: '@consilioweb/admin-nav',
+    package: '@consilioweb/payload-admin-nav',
     icon: '🧭',
     description: {
       en: 'Customizable sidebar navigation with drag & drop, 70+ icons, and per-user preferences.',
       fr: 'Navigation sidebar personnalisable avec drag & drop, 70+ icônes et préférences par utilisateur.',
     },
     configUrl: '/admin/nav-customizer',
-    npmUrl: 'https://www.npmjs.com/package/@consilioweb/admin-nav',
+    npmUrl: 'https://www.npmjs.com/package/@consilioweb/payload-admin-nav',
     detectBy: 'nav-customizer',
     category: 'ui',
   },
   {
     name: 'SEO Analyzer',
-    package: '@consilioweb/seo-analyzer',
+    package: '@consilioweb/payload-seo-analyzer',
     icon: '🔍',
     description: {
       en: 'SEO scoring, sitemap audit, keyword research, schema.org builder, and performance tracking.',
       fr: 'Score SEO, audit sitemap, recherche mots-clés, schema.org et suivi de performance.',
     },
     configUrl: '/admin/seo',
-    npmUrl: 'https://www.npmjs.com/package/@consilioweb/seo-analyzer',
+    npmUrl: 'https://www.npmjs.com/package/@consilioweb/payload-seo-analyzer',
     detectBy: 'seo',
     category: 'seo',
   },
@@ -61,14 +61,14 @@ const CONSILIOWEB_PLUGINS: PluginInfo[] = [
   },
   {
     name: 'Spellcheck',
-    package: '@consilioweb/spellcheck',
+    package: '@consilioweb/payload-spellcheck',
     icon: '✏️',
     description: {
       en: 'Real-time spell checking and grammar suggestions for content fields.',
       fr: 'Vérification orthographique et suggestions grammaticales en temps réel.',
     },
     configUrl: '/admin/spellcheck',
-    npmUrl: 'https://www.npmjs.com/package/@consilioweb/spellcheck',
+    npmUrl: 'https://www.npmjs.com/package/@consilioweb/payload-spellcheck',
     detectBy: 'spellcheck',
     category: 'tools',
   },

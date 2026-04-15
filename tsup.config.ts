@@ -20,8 +20,8 @@ const externals = [
   '@consilioweb/payload-admin-theme',
   '@consilioweb/payload-admin-theme/client',
   '@consilioweb/payload-admin-theme/rsc',
-  '@consilioweb/admin-nav',
-  '@consilioweb/admin-nav/client',
+  '@consilioweb/payload-admin-nav',
+  '@consilioweb/payload-admin-nav/client',
   // Self-references
   '@consilioweb/payload-admin-ui-pro',
   '@consilioweb/payload-admin-ui-pro/client',

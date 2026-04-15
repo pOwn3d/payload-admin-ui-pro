@@ -27,7 +27,7 @@ export interface AdminUiProConfig {
   /** Sync with @consilioweb/payload-admin-theme if installed */
   theme?: { sync?: boolean }
 
-  /** Sync with @consilioweb/admin-nav if installed */
+  /** Sync with @consilioweb/payload-admin-nav if installed */
   nav?: { sync?: boolean }
 
   /** Access control overrides for the global settings and per-module permissions */
