@@ -4,6 +4,7 @@ import type { AdminUiProSettingsData } from '../types.js'
 let _cachedSettings: AdminUiProSettingsData | null = null
 let _cachePromise: Promise<AdminUiProSettingsData | null> | null = null
 let _cacheTimestamp = 0
+let _hasFetched = false // Track whether we've attempted a fetch (even if result is null)
 const CACHE_TTL = 60_000 // 60 seconds
 
 /**
@@ -14,8 +15,8 @@ export async function fetchSettings(
 ): Promise<AdminUiProSettingsData | null> {
   const now = Date.now()
 
-  // Return cached if fresh
-  if (_cachedSettings && now - _cacheTimestamp < CACHE_TTL) {
+  // Return cached result (including null from 401/errors) if still fresh
+  if (_hasFetched && now - _cacheTimestamp < CACHE_TTL) {
     return _cachedSettings
   }
 
@@ -32,13 +33,14 @@ export async function fetchSettings(
     .then((data) => {
       _cachedSettings = data
       _cacheTimestamp = Date.now()
+      _hasFetched = true
       _cachePromise = null
       return data
     })
     .catch(() => {
-      // Cache the failure to prevent immediate retry loops on 401/network errors
       _cachedSettings = null
       _cacheTimestamp = Date.now()
+      _hasFetched = true
       _cachePromise = null
       return null
     })
@@ -53,4 +55,5 @@ export function invalidateSettingsCache(): void {
   _cachedSettings = null
   _cachePromise = null
   _cacheTimestamp = 0
+  _hasFetched = false
 }

@@ -23,6 +23,7 @@ interface CollectionsData {
 let _cached: CollectionsData | null = null
 let _promise: Promise<CollectionsData | null> | null = null
 let _timestamp = 0
+let _hasFetched = false // Track whether we've attempted a fetch (even if result is null)
 const CACHE_TTL = 120_000 // 2 minutes
 
 /**
@@ -31,7 +32,8 @@ const CACHE_TTL = 120_000 // 2 minutes
 export async function fetchCollections(): Promise<CollectionsData | null> {
   const now = Date.now()
 
-  if (_cached && now - _timestamp < CACHE_TTL) {
+  // Return cached result (including null from 401/errors) if still fresh
+  if (_hasFetched && now - _timestamp < CACHE_TTL) {
     return _cached
   }
 
@@ -44,15 +46,15 @@ export async function fetchCollections(): Promise<CollectionsData | null> {
     })
     .then((data) => {
       _cached = data
-      // Cache null results (401, etc.) with same TTL to prevent infinite retry loops
       _timestamp = Date.now()
+      _hasFetched = true
       _promise = null
       return data
     })
     .catch(() => {
-      // Cache the failure to prevent immediate retry loops
       _cached = null
       _timestamp = Date.now()
+      _hasFetched = true
       _promise = null
       return null
     })
@@ -64,4 +66,5 @@ export function invalidateCollectionsCache(): void {
   _cached = null
   _promise = null
   _timestamp = 0
+  _hasFetched = false
 }
