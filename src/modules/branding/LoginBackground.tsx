@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { SafeErrorBoundary } from '../../utils/SafeProvider.js'
 import { fetchSettings } from '../../utils/settingsCache.js'
 import { getThemeById } from '../../utils/themeApplier.js'
 
@@ -17,7 +18,7 @@ interface LoginSettings {
  * Applies background gradient and glassmorphism to the login page
  * entirely via CSS overrides — no child divs (which break under backdrop-filter).
  */
-export const LoginBackground: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
+const LoginBackgroundInner: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const [settings, setSettings] = useState<LoginSettings | null>(null)
 
   useEffect(() => {
@@ -339,4 +340,13 @@ function sanitizeCSS(value: string): string {
     .replace(/expression\s*\(/gi, '') // Remove IE expression()
     .replace(/javascript\s*:/gi, '') // Remove javascript: protocol
     .replace(/@import/gi, '') // Remove CSS imports
+}
+
+
+export const LoginBackground: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
+  return (
+    <SafeErrorBoundary fallback={<>{children}</>}>
+      <LoginBackgroundInner>{children}</LoginBackgroundInner>
+    </SafeErrorBoundary>
+  )
 }
