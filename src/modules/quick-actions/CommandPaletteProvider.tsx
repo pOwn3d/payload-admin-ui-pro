@@ -1,29 +1,19 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React from 'react'
 import { CommandPalette } from './CommandPalette.js'
 import { KeyboardShortcuts } from './KeyboardShortcuts.js'
 
-// Auth pages where complex components should NOT mount (no hooks → no #310)
-const AUTH_PATHS = ['/login', '/create-first-user', '/forgot-password', '/reset-password', '/verify-totp', '/setup-totp']
-
-export const CommandPaletteProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Always call hooks (consistent count between renders)
-  const [isAdminPage, setIsAdminPage] = useState(false)
-
-  useEffect(() => {
-    const path = window.location.pathname
-    const isAuth = AUTH_PATHS.some((p) => path.includes(p))
-    setIsAdminPage(!isAuth)
-  }, [])
-
-  // On login/auth pages: just render children, skip complex components
-  if (!isAdminPage) return <>{children}</>
-
+/**
+ * Renders the Command Palette + Keyboard Shortcuts.
+ * Injected via afterNavLinks (NOT providers) to avoid wrapping the
+ * entire admin tree and causing hydration mismatches.
+ */
+export const CommandPaletteProvider: React.FC<{ children?: React.ReactNode }> = () => {
   return (
-    <KeyboardShortcuts>
-      {children}
+    <>
+      <KeyboardShortcuts>{null}</KeyboardShortcuts>
       <CommandPalette />
-    </KeyboardShortcuts>
+    </>
   )
 }

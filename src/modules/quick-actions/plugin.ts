@@ -3,11 +3,11 @@ import type { QuickActionsModuleConfig, AdminUiProConfig } from '../../types.js'
 
 /**
  * Quick Actions sub-module.
- * Injects a Command Palette (⌘K) accessible from any admin page.
+ * Injects a Command Palette (Cmd+K) accessible from any admin page.
  *
- * Uses `providers` injection to wrap the entire admin app.
- * This ensures the command palette renders above everything,
- * including when admin-nav hides afterNavLinks siblings.
+ * Uses `afterNavLinks` injection (NOT providers) to avoid wrapping the
+ * entire admin component tree, which causes hydration mismatches (#310)
+ * with Payload 3.82+.
  */
 export function quickActionsModule(
   moduleConfig: QuickActionsModuleConfig | undefined,
@@ -18,10 +18,11 @@ export function quickActionsModule(
     config.admin = { ...config.admin }
     config.admin.components = { ...config.admin.components }
 
-    // Inject CommandPalette into providers (wraps entire admin, not hidden by admin-nav)
-    const existingProviders = config.admin.components.providers || []
-    config.admin.components.providers = [
-      ...(Array.isArray(existingProviders) ? existingProviders : [existingProviders]),
+    // Inject CommandPalette + KeyboardShortcuts as afterNavLinks
+    // (renders inside the nav area, does NOT wrap the component tree)
+    const existingAfterNav = config.admin.components.afterNavLinks || []
+    config.admin.components.afterNavLinks = [
+      ...(Array.isArray(existingAfterNav) ? existingAfterNav : [existingAfterNav]),
       '@consilioweb/payload-admin-ui-pro/client#CommandPaletteProvider',
     ]
 

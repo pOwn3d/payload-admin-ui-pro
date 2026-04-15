@@ -37,13 +37,12 @@ export function brandingModule(
       ...(Array.isArray(existingBeforeLogin) ? existingBeforeLogin : [existingBeforeLogin]),
     ]
 
-    // 2. Inject LoginBackground into providers so it also applies on
-    //    forgot password, reset password, and create-first-user pages.
-    //    The CSS targets .template-minimal (shared by all auth pages).
-    //    LoginBackground accepts children so it works as a provider.
-    const existingProviders = config.admin.components.providers || []
-    config.admin.components.providers = [
-      ...(Array.isArray(existingProviders) ? existingProviders : [existingProviders]),
+    // 2. Inject LoginBackground into beforeLogin (NOT providers).
+    //    Using providers wraps the ENTIRE admin tree which causes
+    //    hydration mismatches (#310) with Payload 3.82+.
+    //    beforeLogin only renders on auth pages — safe.
+    config.admin.components.beforeLogin = [
+      ...(config.admin.components.beforeLogin || []),
       loginBackgroundPath,
     ]
 
