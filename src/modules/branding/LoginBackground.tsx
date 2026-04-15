@@ -1,9 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { SafeErrorBoundary } from '../../utils/SafeProvider.js'
+import React, { useEffect, useState } from 'react'
 import { fetchSettings } from '../../utils/settingsCache.js'
 import { getThemeById } from '../../utils/themeApplier.js'
+
+/** Inline error boundary — catches crashes without taking down the app */
+class SafeBoundary extends React.Component<
+  { children: React.ReactNode; fallback: React.ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false }
+  static getDerivedStateFromError() { return { hasError: true } }
+  componentDidCatch(e: Error) { console.warn('[admin-ui-pro] LoginBackground error caught:', e.message) }
+  render() { return this.state.hasError ? this.props.fallback : this.props.children }
+}
 
 interface LoginSettings {
   loginBackground: string | null
@@ -345,8 +355,8 @@ function sanitizeCSS(value: string): string {
 
 export const LoginBackground: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   return (
-    <SafeErrorBoundary fallback={<>{children}</>}>
+    <SafeBoundary fallback={<>{children}</>}>
       <LoginBackgroundInner>{children}</LoginBackgroundInner>
-    </SafeErrorBoundary>
+    </SafeBoundary>
   )
 }
