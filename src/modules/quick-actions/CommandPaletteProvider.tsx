@@ -1,27 +1,29 @@
 'use client'
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { CommandPalette } from './CommandPalette.js'
 import { KeyboardShortcuts } from './KeyboardShortcuts.js'
 
-/** Inline error boundary — catches crashes without taking down the app */
-class SafeBoundary extends React.Component<
-  { children: React.ReactNode; fallback: React.ReactNode },
-  { hasError: boolean }
-> {
-  state = { hasError: false }
-  static getDerivedStateFromError() { return { hasError: true } }
-  componentDidCatch(e: Error) { console.warn('[admin-ui-pro] CommandPalette error caught:', e.message) }
-  render() { return this.state.hasError ? this.props.fallback : this.props.children }
-}
+// Auth pages where complex components should NOT mount (no hooks → no #310)
+const AUTH_PATHS = ['/login', '/create-first-user', '/forgot-password', '/reset-password', '/verify-totp', '/setup-totp']
 
 export const CommandPaletteProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Always call hooks (consistent count between renders)
+  const [isAdminPage, setIsAdminPage] = useState(false)
+
+  useEffect(() => {
+    const path = window.location.pathname
+    const isAuth = AUTH_PATHS.some((p) => path.includes(p))
+    setIsAdminPage(!isAuth)
+  }, [])
+
+  // On login/auth pages: just render children, skip complex components
+  if (!isAdminPage) return <>{children}</>
+
   return (
-    <SafeBoundary fallback={<>{children}</>}>
-      <KeyboardShortcuts>
-        {children}
-        <CommandPalette />
-      </KeyboardShortcuts>
-    </SafeBoundary>
+    <KeyboardShortcuts>
+      {children}
+      <CommandPalette />
+    </KeyboardShortcuts>
   )
 }
