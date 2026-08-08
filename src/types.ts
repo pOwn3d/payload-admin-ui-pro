@@ -24,8 +24,17 @@ export interface AdminUiProConfig {
   /** Module: Activity feed / audit trail */
   activity?: false | ActivityModuleConfig
 
-  /** Sync with @consilioweb/payload-admin-theme if installed */
-  theme?: { sync?: boolean }
+  /**
+   * Sync with @consilioweb/payload-admin-theme if installed.
+   *
+   * `accent` / `preset` : valeurs PAR DEFAUT, appliquees tant que le global en base n'en
+   * porte pas. Sans elles, la seule source de verite etait la base — imposee en
+   * `!important` — et un consommateur n'avait aucun moyen de fixer sa charte depuis le
+   * code : il devait la saisir dans l'interface, sur chaque environnement, sans que rien
+   * ne le documente. Un choix explicite du code doit primer sur un preset ; c'est le
+   * choix de l'utilisateur, enregistre en base, qui prime sur les deux.
+   */
+  theme?: { sync?: boolean; preset?: string; accent?: string }
 
   /** Sync with @consilioweb/payload-admin-nav if installed */
   nav?: { sync?: boolean }
