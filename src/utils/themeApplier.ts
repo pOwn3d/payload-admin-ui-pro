@@ -113,31 +113,20 @@ button[role="switch"][aria-checked="true"] {
 /**
  * Apply a theme by injecting/updating a <style> tag.
  */
-export function applyTheme(
-  settings: {
-    theme?: { preset?: string | null; customAccent?: string | null; customGreen?: string | null; customAmber?: string | null; customRed?: string | null }
-  },
-  /**
-   * Valeurs declarees dans le CODE du consommateur (`theme.preset` / `theme.accent`).
-   *
-   * Ordre de priorite, du plus fort au plus faible :
-   *   1. le global en base — c'est le choix explicite de l'utilisateur, dans l'interface ;
-   *   2. ces valeurs de configuration — la charte que le projet declare ;
-   *   3. `indigo-pro`, le defaut du plugin.
-   *
-   * Sans le niveau 2, un consommateur n'avait AUCUN moyen de fixer sa charte depuis le
-   * code : il fallait la saisir a la main, sur chaque environnement, et rien ne le
-   * documentait — la valeur du plugin s'imposait en `!important` jusqu'a ce que
-   * quelqu'un pense a ouvrir l'ecran de configuration.
-   */
-  defautsDuCode?: { preset?: string; accent?: string },
-): void {
-  const preset = settings?.theme?.preset || defautsDuCode?.preset || 'indigo-pro'
+export function applyTheme(settings: {
+  theme?: { preset?: string | null; customAccent?: string | null; customGreen?: string | null; customAmber?: string | null; customRed?: string | null }
+}): void {
+  // La charte declaree dans le code du consommateur (`theme.preset` / `theme.accent`)
+  // n'a pas a etre resolue ici : elle est posee en `defaultValue` sur les champs du
+  // global (`createAdminUiProSettingsGlobal`), donc deja presente dans `settings` tant
+  // que personne n'a rien choisi dans l'interface. Un choix explicite de l'utilisateur
+  // ecrase naturellement ce defaut — c'est l'ordre voulu.
+  const preset = settings?.theme?.preset || 'indigo-pro'
 
   let css = ''
 
   if (preset === 'custom') {
-    const accent = settings?.theme?.customAccent || defautsDuCode?.accent
+    const accent = settings?.theme?.customAccent
     if (accent) {
       css = generateCustomCSS(
         accent,

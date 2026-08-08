@@ -12,6 +12,12 @@ export function createAdminUiProSettingsGlobal(
   pluginConfig: AdminUiProConfig,
 ): GlobalConfig {
   const brandingDefaults = typeof pluginConfig.branding === 'object' ? pluginConfig.branding : {}
+  // Charte declaree dans le CODE du consommateur. Posee en `defaultValue`, elle
+  // s'applique tant que personne n'a rien choisi dans l'interface — et cede des qu'un
+  // choix explicite est enregistre. Sans elle, la seule source de verite etait la base :
+  // un projet ne pouvait pas fixer sa charte depuis sa configuration, il fallait la
+  // ressaisir a la main sur chaque environnement, sans que rien ne le documente.
+  const themeDefauts = typeof pluginConfig.theme === 'object' ? pluginConfig.theme : {}
   const activityDefaults = typeof pluginConfig.activity === 'object' ? pluginConfig.activity : {}
 
   // Build theme options from presets
@@ -78,7 +84,7 @@ export function createAdminUiProSettingsGlobal(
                 name: 'preset',
                 type: 'select',
                 label: { en: 'Theme Preset', fr: 'Thème prédéfini' },
-                defaultValue: 'indigo-pro',
+                defaultValue: themeDefauts.preset ?? 'indigo-pro',
                 options: themeOptions,
                 admin: {
                   description: {
@@ -111,6 +117,7 @@ export function createAdminUiProSettingsGlobal(
                 name: 'customAccent',
                 type: 'text',
                 label: { en: 'Custom Accent Color (HSL)', fr: 'Couleur accent personnalisée (HSL)' },
+                ...(themeDefauts.accent ? { defaultValue: themeDefauts.accent } : {}),
                 admin: {
                   condition: (data) => data?.theme?.preset === 'custom',
                   description: {
