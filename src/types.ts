@@ -51,9 +51,27 @@ export interface AdminUiProConfig {
 // ─── Dashboard Module ───────────────────────────────────────────────────────
 
 export interface DashboardModuleConfig {
-  /** Register custom widgets */
+  /**
+   * Register custom widgets.
+   *
+   * ⚠️ NON IMPLEMENTE a ce jour. Ce champ est type, documente et exporte, mais aucune
+   * partie du plugin ne le lit : rien ne l'enregistre dans `widgetRegistry`. Le declarer
+   * n'a donc aucun effet, et rien ne le signale au consommateur — qui ne peut que le
+   * constater en cherchant pourquoi son widget n'apparait pas.
+   *
+   * Il reste ici pour ne pas casser les configurations existantes qui le renseignent
+   * deja. A implementer ou a retirer en version majeure.
+   *
+   * En attendant, la voie qui FONCTIONNE pour ajouter des widgets est
+   * `admin.components.providers`, cote consommateur.
+   */
   widgets?: WidgetRegistration[]
-  /** Default widget layout for new users */
+  /**
+   * Default widget layout for new users.
+   *
+   * ⚠️ NON IMPLEMENTE — meme reserve que `widgets` ci-dessus : rien ne seme cette
+   * disposition a la creation d'une preference.
+   */
   defaultLayout?: WidgetLayoutItem[]
   /** Max widgets per dashboard (default: 20) */
   maxWidgets?: number
