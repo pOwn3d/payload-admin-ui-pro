@@ -66,9 +66,18 @@ const LoginBackgroundInner: React.FC<{ children?: React.ReactNode }> = ({ childr
 
       if (data?.branding) {
         const b = data.branding
-        // Theme login gradient takes priority over the default config value
+        // Priorite : ce que le CODE declare l'emporte sur le preset stocke en base.
+        //
+        // L'ordre etait inverse — `themeLoginBg || b.loginBackground` — si bien qu'une
+        // valeur posee explicitement dans `branding.loginBackground` par le consommateur
+        // etait systematiquement ecrasee par le degrade du preset. Cote projet, cela se
+        // traduisait par une page de connexion qui ignorait la charte configuree, sans
+        // aucun moyen de s'en apercevoir depuis le code : l'option semblait simplement
+        // ne rien faire.
+        //
+        // Un preset est une valeur PAR DEFAUT : il doit reculer devant un choix explicite.
         setSettings((prev) => ({
-          loginBackground: themeLoginBg || b.loginBackground || prev?.loginBackground || null,
+          loginBackground: b.loginBackground || themeLoginBg || prev?.loginBackground || null,
           loginLayout: b.loginLayout || 'center',
           welcomeMessage: b.welcomeMessage || prev?.welcomeMessage || null,
           loginFooter: b.loginFooter || prev?.loginFooter || null,
