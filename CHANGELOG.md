@@ -99,3 +99,31 @@
 ## 0.1.0 (2026-04-09)
 
 - Initial release with 6 base modules
+
+## [0.3.0] - 2026-08-08 — Le code peut enfin déclarer sa charte
+
+### Added
+- **`theme.preset` et `theme.accent`** dans la configuration du plugin. Jusqu'ici la seule
+  source de vérité était le global stocké en base, imposé en `!important` : un consommateur
+  n'avait aucun moyen de fixer sa charte depuis son code, il fallait la ressaisir à la main
+  dans l'interface sur chaque environnement, sans que rien ne le documente. Ces valeurs sont
+  posées en `defaultValue` sur les champs du global : elles s'appliquent tant que personne
+  n'a rien choisi, et cèdent dès qu'un choix explicite est enregistré. Ordre de priorité :
+  choix de l'utilisateur en base → configuration du code → `indigo-pro`.
+
+### Fixed
+- **`branding.loginBackground` n'est plus écrasé par le préréglage en base.** L'ordre de
+  résolution était `themeLoginBg || b.loginBackground` : une valeur posée explicitement par
+  le consommateur était systématiquement ignorée, et l'option semblait simplement ne rien
+  faire. Un préréglage est une valeur *par défaut* — il doit reculer devant un choix explicite.
+
+### Documentation
+- **`dashboard.widgets` et `dashboard.defaultLayout` sont signalés comme NON IMPLÉMENTÉS.**
+  Les deux champs sont typés, documentés et exportés, et aucune partie du plugin ne les lit :
+  `widgets` n'est jamais enregistré dans `widgetRegistry`, `defaultLayout` n'est jamais semé à
+  la création d'une préférence. Les déclarer n'a aucun effet, et rien ne le signalait — le
+  consommateur ne pouvait le constater qu'en cherchant pourquoi son widget n'apparaissait pas.
+  Ils restent en place pour ne pas casser les configurations existantes, avec l'avertissement
+  et la voie qui fonctionne réellement (`admin.components.providers`). À implémenter ou à
+  retirer en version majeure.
+
