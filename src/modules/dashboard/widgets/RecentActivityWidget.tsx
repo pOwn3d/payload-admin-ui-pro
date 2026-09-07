@@ -10,6 +10,20 @@ interface ActivityItem {
   action: 'created' | 'updated'; updatedAt: string; url: string
 }
 
+// Only the fields actually rendered below. Without `select`, Payload returns
+// whole documents: a Lexical body weighs 40-50 KB, so a handful of rows on the
+// default /admin page becomes megabytes serialised for a few lines of text.
+// Unknown keys are ignored by Payload's select sanitizer, so listing the four
+// title candidates is safe on collections that only have some of them.
+const RECENT_SELECT = [
+  'select[title]=true',
+  'select[name]=true',
+  'select[filename]=true',
+  'select[email]=true',
+  'select[createdAt]=true',
+  'select[updatedAt]=true',
+].join('&')
+
 export const RecentActivityWidget: React.FC<WidgetProps> = () => {
   const [items, setItems] = useState<ActivityItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -26,7 +40,10 @@ export const RecentActivityWidget: React.FC<WidgetProps> = () => {
         await Promise.all(
           slugs.map(async (slug: string) => {
             try {
-              const res = await fetch(`/api/${slug}?limit=3&depth=0&sort=-updatedAt`, { credentials: 'include' })
+              const res = await fetch(
+                `/api/${slug}?limit=3&depth=0&sort=-updatedAt&${RECENT_SELECT}`,
+                { credentials: 'include' },
+              )
               if (!res.ok) return
               const json = await res.json()
               for (const doc of (json.docs ?? [])) {

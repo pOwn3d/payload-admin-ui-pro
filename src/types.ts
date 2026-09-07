@@ -39,6 +39,16 @@ export interface AdminUiProConfig {
   /** Sync with @consilioweb/payload-admin-nav if installed */
   nav?: { sync?: boolean }
 
+  /**
+   * Slug of the collection that authenticates admin users.
+   *
+   * Only needed when auto-detection picks the wrong one. Resolution order:
+   * this option > `admin.user` of the host config > first collection with
+   * `auth` > 'users'. The activity log and the dashboard preferences both
+   * build a relationship on it.
+   */
+  userCollectionSlug?: string
+
   /** Access control overrides for the global settings and per-module permissions */
   access?: {
     settings?: Access

@@ -1,4 +1,35 @@
-import type { CollectionConfig } from 'payload'
+import type { CollectionConfig, PayloadRequest } from 'payload'
+import { isAdminRole } from '../../utils/rbac.js'
+
+/**
+ * Guard for reading / pruning the audit trail.
+ *
+ * Three layers, on purpose:
+ *
+ * 1. The caller must belong to the admin user collection (`config.admin.user`).
+ *    Without this check, a member of ANY other auth collection — a front-office
+ *    customer, an API client — fell straight through to the role-less branch
+ *    below and could page the entire audit trail, admin e-mails included.
+ * 2. When the host declares roles, only administrators pass. The check is
+ *    `isAdminRole` — the same normalisation the rest of the plugin uses to hand
+ *    out ADMIN_PERMISSIONS — so `superadmin`, `Admin` and `roles: [{ value }]`
+ *    behave here exactly as they do everywhere else. A strict
+ *    `role === 'admin'` used to 403 those accounts on the audit trail alone,
+ *    emptying the notification bell, the activity feed and the timeline.
+ * 3. Hosts that declare no role field at all keep working (fail-open, the
+ *    `null` case): closing that branch would lock the audit trail out of every
+ *    setup without RBAC, which is not a change a plugin gets to make silently.
+ */
+export function canAccessActivityLog({ req }: { req: PayloadRequest }): boolean {
+  const user = req.user
+  if (!user) return false
+
+  const adminUserSlug = req.payload?.config?.admin?.user
+  if (adminUserSlug && user.collection !== adminUserSlug) return false
+
+  const isAdmin = isAdminRole(user)
+  return isAdmin === null ? true : isAdmin
+}
 
 /**
  * Activity log collection.
@@ -6,13 +37,14 @@ import type { CollectionConfig } from 'payload'
  *
  * Security:
  * - Hidden from admin nav
- * - Read: admin only
+ * - Read: admin only (see canAccessActivityLog)
  * - Create: system only (via hooks, not direct API)
  * - Update: nobody (immutable)
  * - Delete: admin only (for retention cleanup)
  */
 export function createActivityLogCollection(
   slug: string = 'activity-log',
+  userCollectionSlug: string = 'users',
 ): CollectionConfig {
   return {
     slug,
@@ -20,29 +52,19 @@ export function createActivityLogCollection(
       hidden: true,
     },
     access: {
-      read: ({ req }) => {
-        if (!req.user) return false
-        if (req.user.role) return req.user.role === 'admin'
-        if (req.user.roles) return req.user.roles.includes('admin')
-        return true
-      },
+      read: canAccessActivityLog,
       // Only internal hooks create entries — block direct API creation
       create: () => false,
       // Immutable — no updates allowed
       update: () => false,
       // Admin can delete for retention cleanup
-      delete: ({ req }) => {
-        if (!req.user) return false
-        if (req.user.role) return req.user.role === 'admin'
-        if (req.user.roles) return req.user.roles.includes('admin')
-        return true
-      },
+      delete: canAccessActivityLog,
     },
     fields: [
       {
         name: 'user',
         type: 'relationship',
-        relationTo: 'users',
+        relationTo: userCollectionSlug,
         index: true,
       },
       {

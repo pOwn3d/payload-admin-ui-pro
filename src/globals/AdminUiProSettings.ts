@@ -411,6 +411,14 @@ export function createAdminUiProSettingsGlobal(
             type: 'group',
             name: 'activityConfig',
             label: '',
+            // The global itself stays publicly readable because the login page
+            // (LoginBackground, FaviconInjector) fetches it before the user is
+            // authenticated. This subtree is not branding: it carries the
+            // notification webhook URL — a bearer credential — plus the internal
+            // tracking rules, so it is gated at field level instead.
+            access: {
+              read: ({ req }) => !!req.user,
+            },
             fields: [
               {
                 name: 'retentionDays',

@@ -28,10 +28,9 @@ export const StatsWidget: React.FC<WidgetProps> = () => {
         const results = await Promise.all(
           slugs.map(async (slug) => {
             try {
-              const res = await fetch(`/api/${slug}?limit=0&depth=0`, { credentials: 'include' })
-              if (!res.ok) return null
-              const json = await res.json()
-              return { slug, label: formatLabel(slug), count: json.totalDocs ?? 0 }
+              const count = await fetchCount(slug)
+              if (count === null) return null
+              return { slug, label: formatLabel(slug), count }
             } catch { return null }
           }),
         )
@@ -68,6 +67,36 @@ export const StatsWidget: React.FC<WidgetProps> = () => {
       })}
     </div>
   )
+}
+
+/**
+ * Count documents in a collection without downloading them.
+ *
+ * `?limit=0` does NOT mean "no documents" in Payload: the adapter reads it as
+ * "disable pagination", fetches EVERY row, runs access control and afterRead
+ * hooks on each, then serialises the lot — just to read `totalDocs`. Done for
+ * up to 8 collections on the default /admin dashboard, that is the whole
+ * database over the wire. `/count` returns `{ totalDocs }` and applies the same
+ * access control.
+ *
+ * `?limit=1` is the fallback for hosts on a Payload build without the `/count`
+ * route — one document instead of all of them. Never `pagination=false`, which
+ * is the very trap `limit=0` falls into.
+ */
+export async function fetchCount(slug: string): Promise<number | null> {
+  const countRes = await fetch(`/api/${slug}/count`, { credentials: 'include' })
+  if (countRes.ok) {
+    const json = await countRes.json()
+    if (typeof json?.totalDocs === 'number') return json.totalDocs
+  } else if (countRes.status !== 404 && countRes.status !== 405) {
+    // 401/403/500 are real answers, not a missing route — do not retry.
+    return null
+  }
+
+  const res = await fetch(`/api/${slug}?limit=1&depth=0`, { credentials: 'include' })
+  if (!res.ok) return null
+  const json = await res.json()
+  return json.totalDocs ?? 0
 }
 
 function formatLabel(slug: string): string {
