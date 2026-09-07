@@ -45,11 +45,16 @@ const sharedConfig: Partial<Options> = {
 
 export default defineConfig([
   // Pass 1: Server entry — plugin + types + globals + modules
+  //
+  // ESM only. The CJS output was not a fallback, it was a trap: `dist/index.cjs`
+  // emitted `require('payload/shared')`, and `payload` is an ESM-only package,
+  // so the file threw ERR_REQUIRE_ESM on every Node version below the
+  // require(esm) support line. A Payload config is loaded as ESM anyway.
   {
     ...sharedConfig,
     entry: { index: 'src/index.ts' },
     bundle: true,
-    format: ['esm', 'cjs'],
+    format: ['esm'],
   },
 
   // Pass 2: RSC views — server components (NO 'use client')

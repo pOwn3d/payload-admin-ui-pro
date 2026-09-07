@@ -11,6 +11,20 @@ interface DocRow {
   url: string
 }
 
+// Only the fields actually rendered below. Without `select`, Payload returns
+// whole documents: a Lexical body weighs 40-50 KB, so a handful of rows on the
+// default /admin page becomes megabytes serialised for a few lines of text.
+// Unknown keys are ignored by Payload's select sanitizer, so listing the title
+// candidates is safe on collections that only have some of them.
+const OVERVIEW_SELECT = [
+  'select[title]=true',
+  'select[name]=true',
+  'select[filename]=true',
+  'select[email]=true',
+  'select[_status]=true',
+  'select[updatedAt]=true',
+].join('&')
+
 /**
  * Collection overview widget — compact table showing recent docs from a collection.
  * The collection slug is derived from the widget instance id (e.g. "overview-posts" → "posts").
@@ -31,7 +45,7 @@ export const CollectionOverviewWidget: React.FC<WidgetProps> = ({ id }) => {
 
     setCollectionLabel(formatLabel(collectionSlug))
 
-    fetch(`/api/${collectionSlug}?limit=5&depth=0&sort=-updatedAt`, {
+    fetch(`/api/${collectionSlug}?limit=5&depth=0&sort=-updatedAt&${OVERVIEW_SELECT}`, {
       credentials: 'include',
     })
       .then((res) => res.ok ? res.json() : null)

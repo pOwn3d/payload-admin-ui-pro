@@ -3,6 +3,7 @@ import type { ActivityModuleConfig, AdminUiProConfig } from '../../types.js'
 import { createActivityLogCollection } from './collection.js'
 import { createAfterChangeHook, createAfterDeleteHook } from './hooks.js'
 import { createActivityEndpoints } from './endpoints.js'
+import { resolveUserCollectionSlug } from '../../utils/userCollection.js'
 
 const LOG_COLLECTION_SLUG = 'activity-log'
 
@@ -33,10 +34,15 @@ const ALWAYS_SKIP = new Set([
  */
 export function activityModule(
   moduleConfig: ActivityModuleConfig | undefined,
-  _pluginConfig: AdminUiProConfig,
+  pluginConfig: AdminUiProConfig,
 ) {
   return (incomingConfig: Config): Config => {
     const config = { ...incomingConfig }
+    // Never assume the auth collection is called `users` — see resolveUserCollectionSlug.
+    const userCollectionSlug = resolveUserCollectionSlug(
+      incomingConfig,
+      pluginConfig.userCollectionSlug,
+    )
     const retentionDays = moduleConfig?.retentionDays ?? 90
     const targetCollections = moduleConfig?.collections
     const skipCollections = new Set([
@@ -47,7 +53,7 @@ export function activityModule(
     // 1. Add the activity-log collection
     config.collections = [
       ...(config.collections || []),
-      createActivityLogCollection(LOG_COLLECTION_SLUG),
+      createActivityLogCollection(LOG_COLLECTION_SLUG, userCollectionSlug),
     ]
 
     // 2. Add API endpoints
@@ -83,7 +89,12 @@ export function activityModule(
       return modifiedCol
     })
 
-    // 4. Inject DocumentTimeline + VersionDiff into afterDocument on tracked collections
+    // 4. Inject DocumentTimeline + VersionDiff into the edit view on tracked collections.
+    //
+    // These used to target `admin.components.afterDocument`, which does not exist
+    // on a Payload collection — the key was silently dropped and none of these
+    // three components ever rendered. `edit.beforeDocumentControls` is the
+    // documented array slot inside the edit view, so they mount there instead.
     config.collections = config.collections.map((col) => {
       if (skipCollections.has(col.slug)) return col
       if (targetCollections && !targetCollections.includes(col.slug)) return col
@@ -91,21 +102,23 @@ export function activityModule(
       const modCol = { ...col }
       modCol.admin = { ...modCol.admin }
       modCol.admin.components = { ...modCol.admin?.components }
-      const existingAfterDoc = modCol.admin.components.afterDocument || []
-      const afterDocComponents = [
-        ...(Array.isArray(existingAfterDoc) ? existingAfterDoc : [existingAfterDoc]),
+      modCol.admin.components.edit = { ...modCol.admin.components.edit }
+
+      const existing = modCol.admin.components.edit.beforeDocumentControls || []
+      const editComponents = [
+        ...(Array.isArray(existing) ? existing : [existing]),
         '@consilioweb/payload-admin-ui-pro/client#DocumentTimeline',
         '@consilioweb/payload-admin-ui-pro/client#PresenceIndicator',
       ]
 
       // Inject VersionDiff only on collections that have versions enabled
       if (col.versions) {
-        afterDocComponents.push(
+        editComponents.push(
           '@consilioweb/payload-admin-ui-pro/client#VersionDiff',
         )
       }
 
-      modCol.admin.components.afterDocument = afterDocComponents
+      modCol.admin.components.edit.beforeDocumentControls = editComponents
       return modCol
     })
 

@@ -1,5 +1,6 @@
 import type { Endpoint } from 'payload'
 import { rateLimit, rateLimitKey, rateLimitResponse } from '../../utils/security.js'
+import { isAdminRole } from '../../utils/rbac.js'
 
 /**
  * Activity log API endpoints.
@@ -10,7 +11,16 @@ import { rateLimit, rateLimitKey, rateLimitResponse } from '../../utils/security
  * DELETE /api/admin-ui-pro/activity/cleanup — delete entries older than retentionDays
  *
  * Security:
- * - All endpoints require admin role
+ * - Every endpoint requires an authenticated session (`req.user`)
+ * - Reads on the audit trail run with `overrideAccess: false`, so the
+ *   collection's own `access.read` (admin-only, scoped to the admin user
+ *   collection) is the single source of truth. This handler used to read with
+ *   `overrideAccess: true` behind a comment claiming admin had been checked
+ *   above — it never was, and any authenticated account could page the log.
+ * - The cleanup endpoint additionally requires an explicit administrator role,
+ *   resolved through the shared `isAdminRole` normalisation (case-insensitive,
+ *   `superadmin` included, `roles: [{ value }]` handled) so it cannot diverge
+ *   from the collection's own access rule
  * - Rate limited
  */
 // In-memory presence store (per-server instance)
@@ -65,7 +75,9 @@ export function createActivityEndpoints(
             page,
             sort: '-timestamp',
             depth: 0,
-            overrideAccess: true, // Already checked admin above
+            // Forward the caller so the collection's access.read actually runs.
+            req,
+            overrideAccess: false,
           })
 
           return new Response(
@@ -77,7 +89,15 @@ export function createActivityEndpoints(
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           )
-        } catch {
+        } catch (err) {
+          // Payload throws Forbidden (status 403) when the caller fails the
+          // collection's read access — surface it as such instead of a 500.
+          if ((err as { status?: number } | null)?.status === 403) {
+            return new Response(
+              JSON.stringify({ error: 'Forbidden' }),
+              { status: 403 },
+            )
+          }
           return new Response(
             JSON.stringify({ error: 'Failed to fetch activity' }),
             { status: 500 },
@@ -95,9 +115,10 @@ export function createActivityEndpoints(
           return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
         }
 
-        // Admin only
-        const isAdmin = req.user.role === 'admin' || req.user.roles?.includes('admin')
-        if (!isAdmin) {
+        // Admin only — stricter than the collection's read rule on purpose:
+        // this handler deletes rows, so a host that declares no role field at
+        // all (isAdminRole → null) is denied instead of failing open.
+        if (isAdminRole(req.user) !== true) {
           return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 })
         }
 

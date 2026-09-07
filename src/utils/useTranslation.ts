@@ -385,8 +385,14 @@ const DE: Record<string, string> = {
   welcomeTitle: 'Willkommen bei Admin UI Pro',
   welcomeSubtitle: 'Starten Sie mit diesen Schnellaktionen',
   welcomeTheme: 'Thema wählen',
+  welcomeThemeDesc: 'Wählen Sie eines der 8 professionellen Themes oder importieren Sie ein Community-Theme.',
   welcomeBranding: 'Branding einrichten',
+  welcomeBrandingDesc: 'Fügen Sie Ihr Logo und Ihren Markennamen hinzu und passen Sie die Anmeldeseite an.',
   welcomeDashboard: 'Dashboard anpassen',
+  welcomeDashboardDesc: 'Ziehen Sie Widgets per Drag & Drop, um Ihr Dashboard zusammenzustellen.',
+  pluginsActive: 'Aktive Plugins',
+  pluginsAvailable: 'Verfügbare Plugins',
+  pluginsConfigure: 'Konfigurieren',
   welcomeDismiss: 'Verstanden, schließen',
   calendarToday: 'Heute',
   calendarPrev: 'Vorheriger Monat',
@@ -520,8 +526,14 @@ const ES: Record<string, string> = {
   welcomeTitle: 'Bienvenido a Admin UI Pro',
   welcomeSubtitle: 'Comience con estas acciones rápidas',
   welcomeTheme: 'Elegir un tema',
+  welcomeThemeDesc: 'Elija uno de los 8 temas profesionales o importe un tema de la comunidad.',
   welcomeBranding: 'Configurar la marca',
+  welcomeBrandingDesc: 'Añada su logotipo y el nombre de su marca, y personalice la página de inicio de sesión.',
   welcomeDashboard: 'Personalizar el panel',
+  welcomeDashboardDesc: 'Arrastre y suelte los widgets para construir su panel.',
+  pluginsActive: 'Plugins activos',
+  pluginsAvailable: 'Plugins disponibles',
+  pluginsConfigure: 'Configurar',
   welcomeDismiss: 'Entendido, cerrar',
   calendarToday: 'Hoy',
   calendarPrev: 'Mes anterior',
@@ -655,8 +667,14 @@ const IT: Record<string, string> = {
   welcomeTitle: 'Benvenuto in Admin UI Pro',
   welcomeSubtitle: 'Inizia con queste azioni rapide',
   welcomeTheme: 'Scegli un tema',
+  welcomeThemeDesc: 'Scegli uno degli 8 temi professionali o importa un tema della community.',
   welcomeBranding: 'Configura il branding',
+  welcomeBrandingDesc: 'Aggiungi il tuo logo e il nome del marchio e personalizza la pagina di accesso.',
   welcomeDashboard: 'Personalizza il pannello',
+  welcomeDashboardDesc: 'Trascina i widget per costruire il tuo pannello.',
+  pluginsActive: 'Plugin attivi',
+  pluginsAvailable: 'Plugin disponibili',
+  pluginsConfigure: 'Configura',
   welcomeDismiss: 'Capito, chiudi',
   calendarToday: 'Oggi',
   calendarPrev: 'Mese precedente',
@@ -790,8 +808,14 @@ const PT: Record<string, string> = {
   welcomeTitle: 'Bem-vindo ao Admin UI Pro',
   welcomeSubtitle: 'Comece com estas ações rápidas',
   welcomeTheme: 'Escolher um tema',
+  welcomeThemeDesc: 'Escolha um dos 8 temas profissionais ou importe um tema da comunidade.',
   welcomeBranding: 'Configurar a marca',
+  welcomeBrandingDesc: 'Adicione o seu logótipo e o nome da marca e personalize a página de início de sessão.',
   welcomeDashboard: 'Personalizar o painel',
+  welcomeDashboardDesc: 'Arraste os widgets para construir o seu painel.',
+  pluginsActive: 'Plugins ativos',
+  pluginsAvailable: 'Plugins disponíveis',
+  pluginsConfigure: 'Configurar',
   welcomeDismiss: 'Entendido, fechar',
   calendarToday: 'Hoje',
   calendarPrev: 'Mês anterior',
@@ -925,8 +949,14 @@ const JA: Record<string, string> = {
   welcomeTitle: 'Admin UI Pro へようこそ',
   welcomeSubtitle: 'これらのクイックアクションで始めましょう',
   welcomeTheme: 'テーマを選択',
+  welcomeThemeDesc: '8つのプロフェッショナルテーマから選ぶか、コミュニティテーマをインポートします。',
   welcomeBranding: 'ブランディングを設定',
+  welcomeBrandingDesc: 'ロゴとブランド名を追加し、ログインページをカスタマイズします。',
   welcomeDashboard: 'ダッシュボードをカスタマイズ',
+  welcomeDashboardDesc: 'ウィジェットをドラッグ＆ドロップして、ダッシュボードを構築します。',
+  pluginsActive: '有効なプラグイン',
+  pluginsAvailable: '利用可能なプラグイン',
+  pluginsConfigure: '設定',
   welcomeDismiss: '了解、閉じる',
   calendarToday: '今日',
   calendarPrev: '前月',
@@ -1005,7 +1035,16 @@ const JA: Record<string, string> = {
   menuEditorShow: '表示',
 }
 
-const TRANSLATIONS: Record<string, Record<string, string>> = { en: EN, fr: FR, de: DE, es: ES, it: IT, pt: PT, ja: JA }
+/**
+ * Exported so the test suite can assert key parity across locales. Five of the
+ * seven dictionaries used to silently miss the same six keys, which fell back
+ * to English on the welcome widget and the plugins hub.
+ */
+export const AUP_CLIENT_TRANSLATIONS: Record<string, Record<string, string>> = {
+  en: EN, fr: FR, de: DE, es: ES, it: IT, pt: PT, ja: JA,
+}
+
+const TRANSLATIONS = AUP_CLIENT_TRANSLATIONS
 
 let _lang: string | null = null
 

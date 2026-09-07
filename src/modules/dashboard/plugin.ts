@@ -2,6 +2,7 @@ import type { Config } from 'payload'
 import type { DashboardModuleConfig, AdminUiProConfig } from '../../types.js'
 import { createDashboardPreferencesCollection } from './collection.js'
 import { createDashboardEndpoints } from './endpoints.js'
+import { resolveUserCollectionSlug } from '../../utils/userCollection.js'
 
 const COLLECTION_SLUG = 'dashboard-preferences'
 
@@ -20,11 +21,17 @@ export function dashboardModule(
 ) {
   return (incomingConfig: Config): Config => {
     const config = { ...incomingConfig }
+    // The collection factory already took a userCollectionSlug parameter — it was
+    // simply never passed, so the relation stayed hardcoded to `users`.
+    const userCollectionSlug = resolveUserCollectionSlug(
+      incomingConfig,
+      pluginConfig.userCollectionSlug,
+    )
 
     // 1. Add dashboard preferences collection
     config.collections = [
       ...(config.collections || []),
-      createDashboardPreferencesCollection(COLLECTION_SLUG),
+      createDashboardPreferencesCollection(COLLECTION_SLUG, userCollectionSlug),
     ]
 
     // 2. Add API endpoints

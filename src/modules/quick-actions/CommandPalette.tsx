@@ -16,6 +16,18 @@ interface PaletteItem {
 import { fetchCollections } from '../../utils/collectionsCache.js'
 import { useAupT } from '../../utils/useTranslation.js'
 
+// Only the fields actually rendered below. Without `select`, Payload returns
+// whole documents: a Lexical body weighs 40-50 KB, so a handful of rows on the
+// default /admin page becomes megabytes serialised for a few lines of text.
+// Unknown keys are ignored by Payload's select sanitizer, so listing the title
+// candidates is safe on collections that only have some of them.
+const RECENT_DOCS_SELECT = [
+  'select[title]=true',
+  'select[name]=true',
+  'select[filename]=true',
+  'select[email]=true',
+].join('&')
+
 interface CommandPaletteProps {
   /** Custom actions registered via plugin config */
   customActions?: Array<{
@@ -144,9 +156,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ customActions })
             .filter((s) => !s.startsWith('payload-') && s !== 'dashboard-preferences')
           const docsPerCollection = Math.max(1, Math.ceil(maxRecentDocs / Math.min(collections.length, 4)))
           for (const slug of collections.slice(0, 4)) {
-            const res = await fetch(`/api/${slug}?limit=${docsPerCollection}&depth=0&sort=-updatedAt`, {
-              credentials: 'include',
-            })
+            const res = await fetch(
+              `/api/${slug}?limit=${docsPerCollection}&depth=0&sort=-updatedAt&${RECENT_DOCS_SELECT}`,
+              { credentials: 'include' },
+            )
             if (!res.ok) continue
             const json = await res.json()
             for (const doc of json.docs || []) {

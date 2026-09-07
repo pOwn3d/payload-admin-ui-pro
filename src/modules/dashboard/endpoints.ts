@@ -277,6 +277,11 @@ export function createDashboardEndpoints(
                 },
                 limit: MAX_PER_COLLECTION,
                 depth: 0,
+                // The Local API defaults to overrideAccess: true, so this search
+                // used to run fully elevated and could surface documents the
+                // caller is not allowed to read. Forward the caller instead.
+                req,
+                overrideAccess: false,
               })
 
               for (const doc of res.docs || []) {

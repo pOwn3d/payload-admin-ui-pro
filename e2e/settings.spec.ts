@@ -25,42 +25,41 @@ test.describe('Settings Page', () => {
     await goToSettings(page)
 
     // Open Theme collapsible
-    const themeSection = page.locator('text=Thème').or(page.locator('text=Theme'))
-    if (await themeSection.isVisible()) {
-      await themeSection.click()
-      await page.waitForTimeout(500)
+    const themeSection = page.locator('text=Thème').or(page.locator('text=Theme')).first()
+    await themeSection.click()
 
-      // Theme select should be visible
-      const themeSelect = page.locator('[name="theme.preset"]').or(
-        page.locator('[id*="theme"] [class*="react-select"]')
-      )
-      await expect(themeSelect.first()).toBeVisible({ timeout: 5000 })
-    }
+    // Theme select should be visible
+    const themeSelect = page.locator('[name="theme.preset"]').or(
+      page.locator('[id*="theme"] [class*="react-select"]')
+    )
+    await expect(themeSelect.first()).toBeVisible({ timeout: 5000 })
   })
 
   test('should show theme preview when theme is selected', async ({ page }) => {
     await goToSettings(page)
 
-    // ThemePreview component should render
-    await page.waitForTimeout(2000)
-    // Look for swatch elements or mini preview
-    const preview = page.locator('[class*="swatch"], [style*="border-radius: 10px"]')
-    // May or may not be visible depending on collapsible state
+    const themeSection = page.locator('text=Thème').or(page.locator('text=Theme')).first()
+    await themeSection.click()
+
+    // ThemePreview renders the preset's display name — one of the eight real
+    // ones. Asserting on the name catches an id/name mismatch, which otherwise
+    // leaves the component returning null with no warning.
+    const previewName = page.locator('h4', {
+      hasText: /Indigo Pro|Emerald Nature|Slate Corporate|Amber Warm|Rose Soft|Ocean Deep|Crimson Bold|Midnight Dark/,
+    })
+    await expect(previewName.first()).toBeVisible({ timeout: 10_000 })
   })
 
   test('should show export/import UI', async ({ page }) => {
     await goToSettings(page)
 
     // Open Export/Import section
-    const exportSection = page.locator('text=Export').or(page.locator('text=Exporter'))
-    if (await exportSection.isVisible()) {
-      await exportSection.click()
-      await page.waitForTimeout(500)
+    const exportSection = page.locator('text=Export').or(page.locator('text=Exporter')).first()
+    await exportSection.click()
 
-      // Should show copy button
-      const copyBtn = page.getByRole('button', { name: /copy|copier/i })
-      await expect(copyBtn).toBeVisible({ timeout: 5000 })
-    }
+    // Should show copy button
+    const copyBtn = page.getByRole('button', { name: /copy|copier/i })
+    await expect(copyBtn.first()).toBeVisible({ timeout: 5000 })
   })
 
   test('should save settings without error', async ({ page }) => {
@@ -69,13 +68,11 @@ test.describe('Settings Page', () => {
     // Click save
     const saveBtn = page.locator('button[type="submit"]').or(
       page.getByRole('button', { name: /save|enregistrer/i })
-    )
-    if (await saveBtn.isVisible()) {
-      await saveBtn.click()
-      // Should not show error toast
-      await page.waitForTimeout(2000)
-      const errorToast = page.locator('.toast--error, [class*="error"]')
-      expect(await errorToast.count()).toBe(0)
-    }
+    ).first()
+    await expect(saveBtn).toBeVisible({ timeout: 5000 })
+    await saveBtn.click()
+
+    // Should not show an error toast
+    await expect(page.locator('.toast--error')).toHaveCount(0, { timeout: 5000 })
   })
 })
