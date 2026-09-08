@@ -1,8 +1,50 @@
 import type { GlobalConfig } from 'payload'
 import type { AdminUiProConfig } from '../types.js'
-import { validateUrl, validateBackground, validateTextField } from '../utils/security.js'
+import {
+  validateUrl,
+  validateBackground,
+  validateTextField,
+  validateCssColor,
+  validateWebhookUrl,
+  containsDangerousCSS,
+} from '../utils/security.js'
 import { THEME_PRESETS } from '../styles/theme-presets.js'
 import { resolvePermissions, hasPermission } from '../utils/rbac.js'
+import { isAdminCollectionUser } from '../utils/userCollection.js'
+import { canAccessActivityLog } from '../modules/activity/collection.js'
+
+/**
+ * Is this value already the stored one, i.e. untouched by the save in flight?
+ *
+ * Payload revalidates the WHOLE merged document on every update, partial ones
+ * included, and the admin panel posts back every field it loaded. So a
+ * validator tightened after the fact does not merely refuse new bad input: it
+ * turns any value already in the database that no longer conforms into a
+ * permanent 400. The settings global then cannot be saved at all — not to
+ * change the logo, not to switch a module off, and not even to clear the
+ * offending field, which `admin.condition` may be hiding (`customGreen` is
+ * invisible unless `theme.preset === 'custom'`). The upgrade path is dead and
+ * the integrator rolls the plugin back, taking the fix with it.
+ *
+ * Hence: judge a value only when it is introduced or changed. Nothing is
+ * reopened by that, because neither validator is the security boundary —
+ * `isSafeCssValue` drops an unsafe colour in `generateCustomCSS` /
+ * `generateThemeCSS` at render time, and `assertSafeWebhookUrl` re-resolves the
+ * webhook target on every fire, redirects included. A grandfathered value is
+ * stored, never applied.
+ *
+ * `previousValue` comes from the ORIGINAL document (Payload passes
+ * `siblingDoc[field.name]` into `validate`), so it is `undefined` on a first
+ * write — where the strict check applies in full.
+ */
+function isUnchanged(value: unknown, previousValue: unknown): boolean {
+  return (
+    previousValue !== undefined &&
+    previousValue !== null &&
+    previousValue !== '' &&
+    value === previousValue
+  )
+}
 
 /**
  * Create the AdminUiPro settings global.
@@ -19,6 +61,10 @@ export function createAdminUiProSettingsGlobal(
   // ressaisir a la main sur chaque environnement, sans que rien ne le documente.
   const themeDefauts = typeof pluginConfig.theme === 'object' ? pluginConfig.theme : {}
   const activityDefaults = typeof pluginConfig.activity === 'object' ? pluginConfig.activity : {}
+  // Same list the runtime SSRF guard uses. The field validator has to know it
+  // too, otherwise `activity.webhookAllowedHosts` is a setting the UI refuses
+  // to let anyone enter.
+  const webhookAllowedHosts = activityDefaults.webhookAllowedHosts
 
   // Build theme options from presets
   const themeOptions = THEME_PRESETS.map((t) => ({
@@ -35,7 +81,12 @@ export function createAdminUiProSettingsGlobal(
     },
     access: {
       read: () => true,
-      update: pluginConfig.access?.settings ?? defaultUpdateAccess,
+      // `defaultUpdateAccess` is referenced through a closure, not passed bare:
+      // it needs `pluginConfig` to consult the host's own `access.permissions`
+      // resolver. Without it, a host that wrote
+      // `access: { permissions: (user) => ({ settings: user.role === 'owner' }) }`
+      // believed writes were locked down while the resolver was never called.
+      update: pluginConfig.access?.settings ?? (({ req }: { req: any }) => defaultUpdateAccess({ req }, pluginConfig)),
     },
     fields: [
       // ── Modules Toggle ─────────────────────────────────────────────
@@ -125,11 +176,14 @@ export function createAdminUiProSettingsGlobal(
                     fr: 'Format HSL : hsl(250, 84%, 60%) — couleur accent pour boutons, liens, états actifs',
                   },
                 },
-                validate: (value: string | null | undefined) => {
-                  if (!value) return true
-                  if (!/^hsl\(\s*\d+/.test(value)) return 'Format HSL requis : hsl(H, S%, L%)'
-                  return true
-                },
+                // The former check tested the PREFIX only, so
+                // `hsl(1) } html { background-image: url(...) } .x{` passed and
+                // was interpolated verbatim into the <style> tag mounted on
+                // every admin page. `validateCssColor` anchors both ends.
+                validate: (value: string | null | undefined, { previousValue }: any) =>
+                  isUnchanged(value, previousValue)
+                    ? true
+                    : validateCssColor(value, { requireHsl: true }),
               },
               {
                 name: 'customGreen',
@@ -139,6 +193,10 @@ export function createAdminUiProSettingsGlobal(
                   condition: (data) => data?.theme?.preset === 'custom',
                   width: '50%',
                 },
+                // No validation at all before: these three fed the same <style>
+                // interpolation as customAccent.
+                validate: (value: string | null | undefined, { previousValue }: any) =>
+                  isUnchanged(value, previousValue) ? true : validateCssColor(value),
               },
               {
                 name: 'customAmber',
@@ -148,6 +206,10 @@ export function createAdminUiProSettingsGlobal(
                   condition: (data) => data?.theme?.preset === 'custom',
                   width: '50%',
                 },
+                // No validation at all before: these three fed the same <style>
+                // interpolation as customAccent.
+                validate: (value: string | null | undefined, { previousValue }: any) =>
+                  isUnchanged(value, previousValue) ? true : validateCssColor(value),
               },
               {
                 name: 'customRed',
@@ -157,6 +219,10 @@ export function createAdminUiProSettingsGlobal(
                   condition: (data) => data?.theme?.preset === 'custom',
                   width: '50%',
                 },
+                // No validation at all before: these three fed the same <style>
+                // interpolation as customAccent.
+                validate: (value: string | null | undefined, { previousValue }: any) =>
+                  isUnchanged(value, previousValue) ? true : validateCssColor(value),
               },
             ],
           },
@@ -249,8 +315,22 @@ export function createAdminUiProSettingsGlobal(
                     fr: 'URL d\'image ou gradient CSS. Laisser vide pour utiliser le gradient par défaut du thème.',
                   },
                 },
-                validate: (value: string | null | undefined) => {
+                validate: (value: string | null | undefined, { previousValue }: any) => {
                   if (!value) return true
+                  // A dangerous pattern is refused even on a value already in
+                  // the database. Grandfathering it was justified by "stored,
+                  // never applied — sanitizeCSS strips its semicolons", which is
+                  // false for exactly the class this list was extended to cover:
+                  // `linear-gradient(...), image-set('https://…')` needs no
+                  // semicolon to fire, and it fires on the ANONYMOUS login page.
+                  if (containsDangerousCSS(value)) {
+                    return 'Background contains unsafe CSS patterns'
+                  }
+                  // Only the SHAPE tightening is grandfathered. Payload
+                  // revalidates the whole merged document on every save, so
+                  // judging an untouched legacy value on the narrowed charset
+                  // would turn the settings global into a permanent 400.
+                  if (isUnchanged(value, previousValue)) return true
                   return validateBackground(value)
                 },
               },
@@ -416,8 +496,43 @@ export function createAdminUiProSettingsGlobal(
             // authenticated. This subtree is not branding: it carries the
             // notification webhook URL — a bearer credential — plus the internal
             // tracking rules, so it is gated at field level instead.
+            //
+            // `!!req.user` was not enough a gate: any member of any other auth
+            // collection satisfied it, and a Slack/Discord incoming-webhook URL
+            // IS the credential. Neither was the admin collection alone: it
+            // carries no role dimension, so a `viewer` / `user` account — which
+            // the plugin gives `activity: false` and gets a 403 on the audit
+            // trail itself — still read the webhook URL out of the global.
+            //
+            // The gate is therefore `canAccessActivityLog`, THE rule of the
+            // audit-trail collection: whoever may not read the journal may not
+            // read the configuration of that journal either. One source of
+            // truth, including its documented fail-open on hosts that declare
+            // no role field at all.
+            // Whoever may WRITE the global may read this subtree. Without that
+            // second branch a host whose admin role is named `owner`, `manager`
+            // or anything the RBAC table does not list kept `update` on the
+            // global — `resolvePermissions` treats an unknown role as an admin —
+            // while losing `read` here. Payload builds the edit form out of the
+            // readable fields only, so the next save posted the document back
+            // WITHOUT `activityConfig`: a read gate silently deleting the
+            // notification rules it was added to protect.
             access: {
-              read: ({ req }) => !!req.user,
+              read: (args: any) => {
+                if (canAccessActivityLog(args)) return true
+                // Second branch, and the collection check is NOT optional here:
+                // `resolvePermissions` reads a role off the user without caring
+                // which auth collection issued it, so without this guard a
+                // front-office account carrying `role: 'owner'` would read the
+                // webhook URL — reopening AUP-02 through the very branch added
+                // to stop a read gate from deleting data.
+                if (!isAdminCollectionUser(args?.req)) return false
+                return hasPermission(
+                  resolvePermissions(args?.req?.user, pluginConfig),
+                  'settings',
+                  'edit',
+                )
+              },
             },
             fields: [
               {
@@ -519,10 +634,18 @@ export function createAdminUiProSettingsGlobal(
                         fr: 'Endpoint recevant la requête POST (payload JSON)',
                       },
                     },
-                    validate: (value: string | null | undefined, { siblingData }: any) => {
+                    validate: (
+                      value: string | null | undefined,
+                      { siblingData, previousValue }: any,
+                    ) => {
                       if (siblingData?.channel !== 'webhook') return true
                       if (!value) return 'Webhook URL is required when channel is webhook'
-                      return validateUrl(value)
+                      // Already stored, untouched by this save: see `isUnchanged`.
+                      if (isUnchanged(value, previousValue)) return true
+                      // validateUrl only checked the https:// prefix, which let
+                      // `https://127.0.0.1:8080/…` and `https://169.254.169.254/…`
+                      // through. Runtime DNS check lives in utils/ssrf.ts.
+                      return validateWebhookUrl(value, webhookAllowedHosts)
                     },
                   },
                   {
@@ -771,11 +894,32 @@ export function createAdminUiProSettingsGlobal(
   }
 }
 
-function defaultUpdateAccess({ req }: { req: any }): boolean {
+/**
+ * Who may write the settings global.
+ *
+ * Two layers:
+ *
+ * 1. The caller must belong to the admin user collection. Without this, a
+ *    member of ANY other auth collection — a front-office customer with a
+ *    normal signup — reached branch 4 of `resolvePermissions` ("authenticated
+ *    but no recognised role → full access") and could POST
+ *    `/api/globals/aup-settings`: notification webhooks pointed at their own
+ *    server, login-page branding rewritten into a credential-phishing page,
+ *    custom theme CSS injected on every admin page. The globals REST route is
+ *    not admin-only; it evaluates this rule and nothing else.
+ * 2. The plugin's RBAC, WITH `pluginConfig` so a host-provided
+ *    `access.permissions` resolver is actually consulted.
+ *
+ * The generous branch-4 fallback for an admin account without a recognised
+ * role is kept — that is the documented behaviour for setups without RBAC —
+ * it simply no longer applies to a principal from another collection.
+ */
+function defaultUpdateAccess({ req }: { req: any }, pluginConfig?: AdminUiProConfig): boolean {
   if (!req.user) return false
+  if (!isAdminCollectionUser(req)) return false
 
   // Use RBAC system to determine settings access
-  const permissions = resolvePermissions(req.user)
+  const permissions = resolvePermissions(req.user, pluginConfig)
   return hasPermission(permissions, 'settings', 'edit')
 }
 

@@ -44,6 +44,10 @@ export function activityModule(
       pluginConfig.userCollectionSlug,
     )
     const retentionDays = moduleConfig?.retentionDays ?? 90
+    const hookOptions = {
+      userCollectionSlug,
+      webhookAllowedHosts: moduleConfig?.webhookAllowedHosts,
+    }
     const targetCollections = moduleConfig?.collections
     const skipCollections = new Set([
       ...ALWAYS_SKIP,
@@ -76,14 +80,14 @@ export function activityModule(
       const existingAfterChange = modifiedCol.hooks.afterChange || []
       modifiedCol.hooks.afterChange = [
         ...(Array.isArray(existingAfterChange) ? existingAfterChange : [existingAfterChange]),
-        createAfterChangeHook(LOG_COLLECTION_SLUG, col.slug),
+        createAfterChangeHook(LOG_COLLECTION_SLUG, col.slug, hookOptions),
       ]
 
       // afterDelete hook
       const existingAfterDelete = modifiedCol.hooks.afterDelete || []
       modifiedCol.hooks.afterDelete = [
         ...(Array.isArray(existingAfterDelete) ? existingAfterDelete : [existingAfterDelete]),
-        createAfterDeleteHook(LOG_COLLECTION_SLUG, col.slug),
+        createAfterDeleteHook(LOG_COLLECTION_SLUG, col.slug, hookOptions),
       ]
 
       return modifiedCol

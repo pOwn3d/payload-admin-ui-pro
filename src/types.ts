@@ -231,6 +231,18 @@ export interface ActivityModuleConfig {
   retentionDays?: number
   /** Record which fields changed (default: true) */
   trackFields?: boolean
+  /**
+   * Hostnames allowed as notification-webhook targets even though they resolve
+   * to private address space (a self-hosted n8n on `10.0.0.5`, an internal
+   * Mattermost…). Exact match, case-insensitive.
+   *
+   * Webhook targets are otherwise refused when they resolve into loopback,
+   * RFC1918, CGNAT or link-local ranges — the settings global is editable from
+   * the admin panel, so an unbounded target is an SSRF primitive. This escape
+   * hatch lives in the host's CODE on purpose: editing the global can never
+   * widen it.
+   */
+  webhookAllowedHosts?: string[]
 }
 
 // ─── Internal Types ─────────────────────────────────────────────────────────

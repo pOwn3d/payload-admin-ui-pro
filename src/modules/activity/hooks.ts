@@ -2,8 +2,34 @@ import type { CollectionAfterChangeHook, CollectionAfterDeleteHook } from 'paylo
 import { SENSITIVE_FIELDS } from '../../types.js'
 import { executeNotificationRules } from './notificationRules.js'
 import type { NotificationRule, NotificationEvent } from './notificationRules.js'
+import type { WebhookFetchOptions } from '../../utils/ssrf.js'
 
 const SENSITIVE_SET = new Set<string>(SENSITIVE_FIELDS)
+
+export interface ActivityHookOptions {
+  /** Slug of the collection the `user` relationship points at. */
+  userCollectionSlug?: string
+  /** Internal hosts the plugin config explicitly allows as webhook targets. */
+  webhookAllowedHosts?: string[]
+}
+
+/**
+ * The `user` relationship on the audit log points at ONE collection — the admin
+ * one. Writing `req.user.id` unconditionally stored a `customers` id in it as
+ * soon as a front-office account changed a document: a dangling foreign key on
+ * Postgres, and a row that renders as another user entirely. `userName` still
+ * records who acted, so nothing is lost from the trail.
+ */
+function relationUserId(
+  req: { user?: { id?: unknown; collection?: string } | null; payload?: { config?: { admin?: { user?: string } } } },
+  options?: ActivityHookOptions,
+): unknown {
+  const user = req.user
+  if (!user) return undefined
+  const expected = options?.userCollectionSlug || req.payload?.config?.admin?.user
+  if (expected && user.collection && user.collection !== expected) return undefined
+  return user.id
+}
 
 /**
  * Create afterChange hook for activity logging.
@@ -17,6 +43,7 @@ const SENSITIVE_SET = new Set<string>(SENSITIVE_FIELDS)
 export function createAfterChangeHook(
   logCollectionSlug: string,
   collectionSlug: string,
+  options?: ActivityHookOptions,
 ): CollectionAfterChangeHook {
   return async ({ doc, previousDoc, operation, req }) => {
     // Don't log if no user (system operations) or if logging the log itself
@@ -39,7 +66,7 @@ export function createAfterChangeHook(
       await req.payload.create({
         collection: logCollectionSlug,
         data: {
-          user: req.user.id,
+          user: relationUserId(req, options),
           userName,
           action,
           collection: collectionSlug,
@@ -60,7 +87,7 @@ export function createAfterChangeHook(
         docTitle,
         userName,
         timestamp,
-      }, doc as Record<string, unknown>)
+      }, doc as Record<string, unknown>, { allowedHosts: options?.webhookAllowedHosts })
     } catch {
       // Logging failure must never break the main operation
     }
@@ -75,6 +102,7 @@ export function createAfterChangeHook(
 export function createAfterDeleteHook(
   logCollectionSlug: string,
   collectionSlug: string,
+  options?: ActivityHookOptions,
 ): CollectionAfterDeleteHook {
   return async ({ doc, req }) => {
     if (!req.user) return doc
@@ -88,7 +116,7 @@ export function createAfterDeleteHook(
       await req.payload.create({
         collection: logCollectionSlug,
         data: {
-          user: req.user.id,
+          user: relationUserId(req, options),
           userName,
           action: 'delete',
           collection: collectionSlug,
@@ -108,7 +136,7 @@ export function createAfterDeleteHook(
         docTitle,
         userName,
         timestamp,
-      }, doc as Record<string, unknown>)
+      }, doc as Record<string, unknown>, { allowedHosts: options?.webhookAllowedHosts })
     } catch {
       // Logging failure must never break the main operation
     }
@@ -167,12 +195,13 @@ function fireNotificationRulesFromSettings(
   payload: any,
   event: NotificationEvent,
   doc?: Record<string, unknown>,
+  webhookOptions?: WebhookFetchOptions,
 ): void {
   const now = Date.now()
 
   // If cache is fresh, use it directly
   if (_rulesCache && now < _rulesCache.expiry) {
-    executeNotificationRules(_rulesCache.rules, event, doc)
+    executeNotificationRules(_rulesCache.rules, event, doc, webhookOptions)
     return
   }
 
@@ -195,7 +224,7 @@ function fireNotificationRulesFromSettings(
           }))
         : []
       _rulesCache = { rules, expiry: Date.now() + RULES_CACHE_TTL_MS }
-      executeNotificationRules(rules, event, doc)
+      executeNotificationRules(rules, event, doc, webhookOptions)
     })
     .catch(() => {
       // Settings read failure must never surface

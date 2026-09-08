@@ -44,9 +44,16 @@ export const ThemeMarketplace: React.FC = () => {
         setStatus({ type: 'error', message: 'Invalid theme format — requires id, name, colors, login, dark' })
         return
       }
-      setPreviewTheme(parsed)
-      // Apply live preview
+      // generateThemeCSS returns '' when any colour could escape its
+      // declaration — a pasted theme is untrusted input, say so instead of
+      // silently blanking the override tag.
       const css = generateThemeCSS(parsed)
+      if (!css) {
+        setStatus({ type: 'error', message: 'Theme rejected — unsafe CSS value in colors' })
+        setTimeout(() => setStatus(null), 4000)
+        return
+      }
+      setPreviewTheme(parsed)
       let el = document.getElementById('aup-theme-override')
       if (!el) {
         el = document.createElement('style')

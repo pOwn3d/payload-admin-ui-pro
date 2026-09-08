@@ -158,7 +158,9 @@ The non-table views add a toolbar with **saved views** (name the current query, 
 columns; stored in Payload preferences, so they follow the user across browsers) and a **CSV
 export**. The export re-fetches from the collection's REST endpoint sorted by `-updatedAt`: it is
 capped at 500 documents, keeps scalar fields only, and does **not** carry over the list's active
-filters.
+filters. Cells starting with `=`, `+`, `-`, `@`, a tab or a carriage return are prefixed with an
+apostrophe so a spreadsheet reads them as text — a value stored through a public form must not
+become a formula in the exporting administrator's Excel.
 
 Two further features live inside the views rather than in that toolbar, and neither covers all of
 them: **inline editing** of titles and status, in cards and kanban, and **bulk select** with a
@@ -214,7 +216,13 @@ This module also injects the favicon override and the dark mode toggle into `aft
 - Notification rules, configured in the settings global: match an event (create/update/delete), a
   collection slug (or `*`), and optionally a field-equals condition, then POST the action metadata
   to a webhook — fire-and-forget, 5 s timeout, never any field values. The `in-app` channel is a
-  no-op: the notification bell already reads the activity log.
+  no-op: the notification bell already reads the activity log. The target must be `https` and must
+  resolve to a public address: loopback, RFC1918, CGNAT and link-local ranges are refused, at input
+  time and again at request time, on the initial URL and after every redirect. Add
+  `activity.webhookAllowedHosts` when you deliberately notify an internal endpoint — the allowlist
+  is honoured by both checks. A URL already stored before the plugin was upgraded is not re-judged
+  when you save an unrelated setting (that would freeze the whole global behind one `400`), but it
+  is still refused at request time, so it never fires.
 
 ### Dark Mode
 
@@ -252,7 +260,7 @@ and `payload-support`.
 | `branding` | `false \| BrandingModuleConfig` | enabled | Login page, favicon, title suffix. |
 | `activity` | `false \| ActivityModuleConfig` | enabled | Audit trail. |
 | `theme.preset` | `string` | `'indigo-pro'` | Default value of the settings global's preset select. |
-| `theme.accent` | `string` | — | Default custom accent (HSL). Read **only** when the preset is `custom`; with any other preset the theme's own accent wins. |
+| `theme.accent` | `string` | — | Default custom accent (HSL). Read **only** when the preset is `custom`; with any other preset the theme's own accent wins. Custom colours are validated as whole colour values — a string that could terminate its CSS declaration is refused, at input time and again before injection. |
 | `access.settings` | `Access` | RBAC `settings: edit` | Update access on the `aup-settings` global. |
 | `access.permissions` | `(user) => Record<string, boolean \| string> \| Promise<Record<string, boolean \| string>>` | — | Custom permission resolver. The exported `PermissionsCallback` type is narrower (`AupPermissions`), but this is the signature TypeScript actually enforces on the config. See [Access Control](#access-control). |
 | `componentPaths` | `{ loginBackground?, faviconInjector? }` | package paths | Override component paths for symlinked monorepo development. |
@@ -277,6 +285,7 @@ and `payload-support`.
 | `activity.retentionDays` | `number` | `90` | Cutoff used by the cleanup endpoint. |
 | `activity.collections` | `string[]` | all | Track only these collections. |
 | `activity.skipCollections` | `string[]` | `[]` | Exclude collections, on top of the plugin's own internal ones. |
+| `activity.webhookAllowedHosts` | `string[]` | `[]` | Hostnames accepted as notification-webhook targets even though they resolve into private address space. Webhook targets are otherwise refused when they land on loopback, RFC1918, CGNAT or link-local addresses — including after a redirect. Declared in code on purpose: editing the settings global can never widen it. |
 
 `CollectionViewConfig` takes `views` (required), `defaultView`, `cardConfig`
 (`imageField`, `titleField`, `subtitleField`, `statusField`, `statusOptions`) and `kanbanConfig`
@@ -338,40 +347,40 @@ so nobody spends an afternoon wondering why they do nothing.
 
 ## API Endpoints
 
-Registered on Payload's REST route (`/api` by default). Every endpoint requires an authenticated
-session. Eight of the ten are also rate limited per user, per request quota below; `GET` and
-`DELETE /api/admin-ui-pro/presence` check the session and nothing else.
+Registered on Payload's REST route (`/api` by default). Every endpoint requires a session **on the
+collection named by `admin.user`** — an account authenticated on another auth collection (a
+front-office `customers`, `members`…) gets a `403`, not a `200`. All ten are rate limited per user,
+per the quotas below.
 
 | Method | Path | Access | Rate limit | Purpose |
 |--------|------|--------|------------|---------|
-| `GET` | `/api/admin-ui-pro/collections` | Any authenticated user | 300/min | Lists non-internal collections and globals for the palette and the widgets. |
-| `GET` | `/api/admin-ui-pro/dashboard` | Any authenticated user | 60/min | The caller's saved widget layout. |
-| `PATCH` | `/api/admin-ui-pro/dashboard` | Any authenticated user | 30/min | Saves the layout after strict size and structure validation. |
-| `DELETE` | `/api/admin-ui-pro/dashboard` | Any authenticated user | 10/min | Resets the layout to the default. |
-| `GET` | `/api/admin-ui-pro/search` | Any authenticated user, runs as the caller | 30/min | `like` search on `title`/`name` across up to 5 collections, 15 results max. |
+| `GET` | `/api/admin-ui-pro/collections` | Admin collection | 300/min | Lists non-internal collections and globals for the palette and the widgets. |
+| `GET` | `/api/admin-ui-pro/dashboard` | Admin collection, runs as the caller | 60/min | The caller's saved widget layout. |
+| `PATCH` | `/api/admin-ui-pro/dashboard` | Admin collection, runs as the caller | 30/min | Saves the layout after strict size and structure validation. |
+| `DELETE` | `/api/admin-ui-pro/dashboard` | Admin collection, runs as the caller | 10/min | Resets the layout to the default. |
+| `GET` | `/api/admin-ui-pro/search` | Admin collection, runs as the caller | 30/min | `like` search on `title`/`name` across up to 5 collections, 15 results max. |
 | `GET` | `/api/admin-ui-pro/activity` | Administrators (see below) | 60/min | Paginated audit trail. Answers `403` to everyone else. |
-| `DELETE` | `/api/admin-ui-pro/activity/cleanup` | Explicit administrator role | 5/min | Deletes entries older than `retentionDays`. |
-| `GET` | `/api/admin-ui-pro/presence` | Any authenticated user | **none** | Who is currently editing a given key. |
-| `POST` | `/api/admin-ui-pro/presence` | Any authenticated user | 30/min | Presence heartbeat; entries expire after 60 s. |
-| `DELETE` | `/api/admin-ui-pro/presence` | Any authenticated user | **none** | Leaves the presence list. |
+| `DELETE` | `/api/admin-ui-pro/activity/cleanup` | Admin collection **and** an explicit administrator role | 5/min | Deletes entries older than `retentionDays`. |
+| `GET` | `/api/admin-ui-pro/presence` | Admin collection | 120/min | Who is currently editing a given key. The key must match `presence:<collection>:<id>`. |
+| `POST` | `/api/admin-ui-pro/presence` | Admin collection | 30/min | Presence heartbeat; entries expire after 60 s. |
+| `DELETE` | `/api/admin-ui-pro/presence` | Admin collection | 30/min | Leaves the presence list. |
 
 Presence is kept in memory, per server instance — it does not survive a restart and is not shared
 across replicas.
 
-> `activity/cleanup` is stricter than the audit trail's read rule on one axis and looser on
-> another: it demands an explicit administrator role (a host that declares no role field at all is
-> denied), but it does not apply the `admin.user` collection check and deletes with
-> `overrideAccess: true`. An account in another auth collection that carries an `admin` role is
-> therefore refused when reading the log yet can still purge it. That asymmetry is a known gap; if
-> such accounts exist on your host, keep the endpoint behind your own edge rule.
+> `activity/cleanup` remains stricter than the audit trail's read rule on one axis: it demands an
+> explicit administrator role, so a host that declares no role field at all is denied rather than
+> failing open. It now applies the `admin.user` collection check as well, closing the asymmetry
+> where an account in another auth collection carrying an `admin` role was refused on read yet
+> could still purge the log.
 
 ## Collections and Globals
 
 | Slug | Role | Read | Write |
 |------|------|------|-------|
 | `activity-log` | Audit trail entries. Hidden from the nav. | Members of the `admin.user` collection holding an `admin`/`superadmin` role (case-insensitive, plain strings or `{ value }` entries). Hosts that declare no role field at all keep access. | Create and update are refused for everyone — entries are written by internal hooks and are immutable. Delete follows the same rule as read. |
-| `dashboard-preferences` | One widget layout per user. Hidden from the nav. | Own row only | Update and delete: own row only. Create: any authenticated user — what keeps it to one row each is the `unique` constraint on `user`, not the access rule. |
-| `aup-settings` (global) | All admin-panel settings. Appears under **Settings**. | Public — the login page reads its branding before anyone signs in — **except** the `activityConfig` group, which requires a session because it carries webhook URLs. | `access.settings`, or the RBAC `settings: edit` permission by default. |
+| `dashboard-preferences` | One widget layout per user. Hidden from the nav. | Own row, and only for members of the `admin.user` collection — ids are per-collection sequences, so an id scope alone does not separate `users#3` from `customers#3`. | Update and delete: same rule. Create: members of the `admin.user` collection — what keeps it to one row each is the `unique` constraint on `user`, not the access rule. |
+| `aup-settings` (global) | All admin-panel settings. Appears under **Settings**. | Public — the login page reads its branding before anyone signs in — **except** the `activityConfig` group, restricted to the `admin.user` collection because it carries webhook URLs, which are bearer credentials. | Members of the `admin.user` collection, then `access.settings` or the RBAC `settings: edit` permission. |
 
 Both collection slugs are fixed. The `user` relationship on each points at the collection resolved
 from `userCollectionSlug`.
