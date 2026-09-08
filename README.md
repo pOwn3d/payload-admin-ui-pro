@@ -30,6 +30,10 @@ of its own — your collections and data model are left alone.
 - [Requirements](#requirements)
 - [Access Control](#access-control)
 - [Widget SDK](#widget-sdk)
+- [Database and updates](#database-and-updates)
+- [Upgrading](#upgrading)
+- [Maintenance scripts](#maintenance-scripts)
+- [Uninstall](#uninstall)
 - [Support](#support)
 - [License](#license)
 
@@ -282,7 +286,9 @@ and `payload-support`.
 | `fieldEnhance.rating` | `boolean` | `true` | Enable the number enhancement. |
 | `fieldEnhance.imagePreview` | `boolean` | `true` | Enable the upload enhancement. |
 | `fieldEnhance.relationCard` | `boolean` | `true` | Enable the relationship enhancement. |
-| `activity.retentionDays` | `number` | `90` | Cutoff used by the cleanup endpoint. |
+| `activity.retentionDays` | `number` | `90` | Age cutoff for the purge. Read by the cleanup endpoint and by the scheduled job below. `0` or a negative value purges **nothing** — emptying the log stays a manual act. |
+| `activity.retentionSchedule` | `boolean \| string` | `false` | Runs the purge automatically as a Payload Jobs task. `true` schedules it daily at 03:00; a string is used as the cron expression. **Off by default** — see [Database and updates](#database-and-updates) for what switching it on adds to your schema, and what has to run the queue. |
+| `activity.retentionQueue` | `string` | `'default'` | Queue the retention job is filed under. |
 | `activity.collections` | `string[]` | all | Track only these collections. |
 | `activity.skipCollections` | `string[]` | `[]` | Exclude collections, on top of the plugin's own internal ones. |
 | `activity.webhookAllowedHosts` | `string[]` | `[]` | Hostnames accepted as notification-webhook targets even though they resolve into private address space. Webhook targets are otherwise refused when they land on loopback, RFC1918, CGNAT or link-local addresses — including after a redirect. Declared in code on purpose: editing the settings global can never widen it. |
@@ -347,10 +353,14 @@ so nobody spends an afternoon wondering why they do nothing.
 
 ## API Endpoints
 
-Registered on Payload's REST route (`/api` by default). Every endpoint requires a session **on the
-collection named by `admin.user`** — an account authenticated on another auth collection (a
-front-office `customers`, `members`…) gets a `403`, not a `200`. All ten are rate limited per user,
+Registered on Payload's REST route (`/api` by default). Every endpoint but one requires a session
+**on the collection named by `admin.user`** — an account authenticated on another auth collection (a
+front-office `customers`, `members`…) gets a `403`, not a `200`. Those ten are rate limited per user,
 per the quotas below.
+
+The exception is `GET /admin-ui-pro/branding`, which is public by necessity: it serves the login
+page, and nobody is authenticated there yet. It answers with a hand-written whitelist of nine
+branding values — never the settings global itself.
 
 The limiter runs **after** the access decision, never before, and its counter is keyed on the
 caller's collection *and* id. Both halves matter: a caller who is refused must not be able to spend
@@ -359,6 +369,7 @@ would put `users#3` and `customers#3` in one bucket.
 
 | Method | Path | Access | Rate limit | Purpose |
 |--------|------|--------|------------|---------|
+| `GET` | `/api/admin-ui-pro/branding` | **Public** | none | The nine branding values the login page needs (logo, brand name, login background/layout/message/footer, favicon, theme preset). Positive whitelist: nothing else in the settings global can reach it. |
 | `GET` | `/api/admin-ui-pro/collections` | Admin collection | 300/min | Lists non-internal collections and globals for the palette and the widgets. |
 | `GET` | `/api/admin-ui-pro/dashboard` | Admin collection, runs as the caller | 60/min | The caller's saved widget layout. |
 | `PATCH` | `/api/admin-ui-pro/dashboard` | Admin collection, runs as the caller | 30/min | Saves the layout after strict size and structure validation. |
@@ -498,6 +509,178 @@ registerWidget({
 
 Registered widgets appear next to the built-in ones in the dashboard's edit mode. Duplicate ids are
 ignored — the first registration wins.
+
+## Database and updates
+
+This plugin adds collections and a global to **your** Payload config; it does not own your schema,
+and it cannot ship migrations for you. Payload resolves migrations from a single directory — the
+host application's — so a migration file delivered inside an npm package is never discovered.
+
+- **In development**, `push` (the default on the SQLite and Postgres adapters) syncs the schema for
+  you when the plugin's collections appear.
+- **In production**, generate and run them yourself: `payload migrate:create` then `payload migrate`.
+  Never `push` — Payload skips it as soon as `NODE_ENV=production`, and mixing it with a migration
+  ledger triggers a data-loss warning.
+- Every release of this plugin states in its [Upgrading](#upgrading) section whether it changes the
+  schema. **No release has so far** — verified, not assumed: `scripts/dev/schema-diff.sh v0.5.0 v0.6.0`
+  set-diffs the field `name`/`slug`/`type`/`relationTo` and `unique`/`index`/`required`/`hasMany`/
+  `virtual` declarations between two refs, and comes back empty for every tag pair since `v0.4.0`.
+
+Three options make tables appear. The first two are on by default and are the plugin's own storage;
+the third brings Payload's job infrastructure with it:
+
+| Option | What it adds |
+|--------|--------------|
+| `activity` (on by default) | `activity-log`. |
+| `dashboard` (on by default) | `dashboard-preferences`. |
+| `activity.retentionSchedule` | Payload's own `payload-jobs` collection, plus a `payload-jobs-stats` global — Payload appends both as soon as one scheduled task exists. If your app already uses Jobs, nothing new appears. |
+
+`activity.retentionSchedule` also needs something to drive the queue: `payload jobs:handle-schedules`
+followed by `payload jobs:run` (a system cron, a platform scheduled task), or `jobs.autoRun` in your
+config. Registered without a runner, the task exists and never fires. This is why it is off by
+default rather than on: paying two tables for a purge that would not run is the worse trade.
+
+## Upgrading
+
+Both released upgrades below are **behaviour** changes only. Neither adds, removes, renames or
+retypes a field, so there is nothing to migrate — see [Database and updates](#database-and-updates)
+for the one option that would change that.
+
+### 0.5.x → 0.6.0
+
+**No schema change. No migration to generate.**
+
+- `POST /api/dashboard-preferences` carrying a `user` other than the caller now returns `403`. If
+  you seed dashboard layouts for your team from a script, that write no longer passes as one of your
+  administrators — run it through the Local API with `overrideAccess: true`.
+- The `user` relationship on `dashboard-preferences` is no longer writable on update, so a row
+  cannot change hands. Rows already stored stay updatable: Payload drops the field from incoming
+  data and falls back to the stored value.
+- The `payload` and `@payloadcms/ui` peer ranges moved from `^3.0.0` to `^3.79.1`. Check the version
+  actually installed (`pnpm why payload`), not the range in your `package.json`.
+
+Rows planted before this release are not cleaned up by it. Run
+[`npx aup-audit-preferences`](#aup-audit-preferences) once after upgrading.
+
+### 0.4.x → 0.5.0
+
+**No schema change. No migration to generate.**
+
+This one is a security release, and it changes what existing data does rather than what shape it
+has. Two things to audit:
+
+**Values already stored are grandfathered — kept, but no longer applied.** Several validators were
+tightened (theme colours, CSS values, webhook URLs), and each judges a value only when it is
+introduced or changed. That is deliberate: Payload revalidates the whole merged document on every
+update, so an unconditional validator would re-judge rows it never saw written and turn the settings
+global into a permanent `400` — you could not even change the logo. The safety net is elsewhere: an
+unsafe colour is dropped at render time by `generateCustomCSS` / `generateThemeCSS`, and a webhook
+target is re-resolved on every fire, redirects included. So nothing unsafe is applied, but the
+settings screen still shows the old value and will keep showing it. Open **Settings → Admin UI Pro**,
+re-save the colour fields and the webhook URLs, and they go through the current validator.
+
+**One field is not grandfathered.** `branding.loginBackground` refuses a stored value containing
+`url(`, `image-set(`, `@import`, `expression(` or `javascript:` — the settings global will not save
+at all until that field is fixed, because the value renders on the anonymous login page.
+
+Also worth checking after this upgrade: accounts authenticated on a second auth collection lose
+access to every `/api/admin-ui-pro/*` route, to `dashboard-preferences` and to writing the settings
+global; back-office roles below administrator lose read access to the `activityConfig` subtree;
+self-hosted webhook targets on private address space need `activity.webhookAllowedHosts`; presence
+keys must match `presence:<collection>:<id>`; and CSV exports now prefix formula-looking cells with
+an apostrophe.
+
+## Maintenance scripts
+
+### `aup-audit-preferences`
+
+`dashboard-preferences.user` is a relationship to one collection, so the database stores a bare id —
+and ids are per-collection sequences on SQLite and Postgres, where `users#3` and `customers#3` are
+the same `3`. Before the access rules were tightened, `create` accepted any `user` id from any
+authenticated account, and `unique: true` made the planted row *the* row the victim's dashboard
+reads. The fix closes that door. It does not clean up what came through it.
+
+```bash
+# read-only report; exits 2 if anything is wrong
+npx aup-audit-preferences
+
+# delete the orphan rows
+npx aup-audit-preferences --fix
+```
+
+Run it from the root of the host application — it loads your Payload config through the `payload`
+binary and talks to your database through the Local API, so it works on SQLite, Postgres and Mongo
+alike. It reports two things:
+
+- **orphans** — the `user` id matches no document of the `admin.user` collection. Unreachable rows,
+  either planted or left behind by a deleted account. `--fix` deletes these.
+- **collisions** — the id resolves in the admin collection *and* in another auth collection.
+  Reported only, **never** deleted: on any host with two auth collections most of these are
+  perfectly legitimate, and deleting them would destroy real layouts.
+
+`--json` gives machine-readable output, `--slug=` targets a custom slug.
+
+## Uninstall
+
+1. Remove `adminUiProPlugin(...)` from your `payload.config.ts`
+2. Uninstall the package:
+
+```bash
+pnpm remove @consilioweb/payload-admin-ui-pro
+```
+
+3. Regenerate the import map:
+
+```bash
+pnpm generate:importmap
+```
+
+### Data cleanup (optional)
+
+Nothing is removed from your database by uninstalling. What this plugin created:
+
+| Object | Created by |
+|--------|-----------|
+| `activity-log` collection | the `activity` module |
+| `dashboard-preferences` collection | the `dashboard` module |
+| `aup-settings` global | always |
+| rows in `payload-preferences` with a key starting `aup-saved-views-` | the saved views of the list-views module |
+
+**Check the real table names before dropping anything** (`.tables` on SQLite, `\dt` on Postgres).
+Payload derives them from the slug and a `dbName` override changes them, and relationship fields add
+`_rels` companions.
+
+**SQLite:**
+```sql
+DROP TABLE IF EXISTS activity_log_rels;
+DROP TABLE IF EXISTS activity_log;
+DROP TABLE IF EXISTS dashboard_preferences_rels;
+DROP TABLE IF EXISTS dashboard_preferences;
+DROP TABLE IF EXISTS aup_settings;
+DELETE FROM payload_preferences WHERE key LIKE 'aup-saved-views-%';
+```
+
+**PostgreSQL:**
+```sql
+DROP TABLE IF EXISTS activity_log_rels CASCADE;
+DROP TABLE IF EXISTS activity_log CASCADE;
+DROP TABLE IF EXISTS dashboard_preferences_rels CASCADE;
+DROP TABLE IF EXISTS dashboard_preferences CASCADE;
+DROP TABLE IF EXISTS aup_settings CASCADE;
+DELETE FROM payload_preferences WHERE key LIKE 'aup-saved-views-%';
+```
+
+**MongoDB:**
+```js
+db.getCollection('activity-log').drop()
+db.getCollection('dashboard-preferences').drop()
+db.getCollection('globals').deleteOne({ globalType: 'aup-settings' })
+db.getCollection('payload-preferences').deleteMany({ key: /^aup-saved-views-/ })
+```
+
+**Do not drop** `payload-jobs` or `payload-jobs-stats` on the basis of this plugin: they belong to
+Payload, and your application may be using them for something else. They are only relevant here if
+you had turned `activity.retentionSchedule` on and nothing else in your app uses Jobs.
 
 ## Support
 

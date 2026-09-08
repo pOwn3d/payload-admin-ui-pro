@@ -184,7 +184,8 @@ export const SavedViews: React.FC<{ collection: string; currentViewMode?: string
           <input
             value={viewName}
             onChange={(e) => setViewName(e.target.value)}
-            placeholder={t('viewName') || 'View name...'}
+            aria-label={t('viewName')}
+            placeholder={t('viewName')}
             style={inputStyle}
             onKeyDown={(e) => e.key === 'Enter' && saveView()}
             autoFocus

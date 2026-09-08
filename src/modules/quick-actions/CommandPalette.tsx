@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useDialogA11y } from '../../utils/dialogA11y.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -208,6 +209,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ customActions })
     }
   }, [open])
 
+  // Containment and focus restoration only — Escape and the initial focus are
+  // already handled above, so `autoFocus` is off to leave the search input the
+  // opening target.
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogA11y({ containerRef: dialogRef, open, autoFocus: false })
+
   // ── Debounced full-text search ────────────────────────────────────
   useEffect(() => {
     // Cancel any pending timer
@@ -333,7 +340,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ customActions })
       <div className="aup-palette-overlay" onClick={() => setOpen(false)} aria-hidden="true" />
 
       {/* Modal */}
-      <div className="aup-palette-dialog" role="dialog" aria-label="Command palette">
+      <div ref={dialogRef} className="aup-palette-dialog" role="dialog" aria-modal="true" aria-label="Command palette">
         {/* Search input */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px 20px', borderBottom: 'var(--aup-border-subtle)' }}>
           <span style={{ fontSize: '16px', opacity: 0.40 }}>🔍</span>
@@ -343,6 +350,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ customActions })
             value={query}
             onChange={(e) => { setQuery(e.target.value); setSelectedIndex(0) }}
             onKeyDown={handleKeyDown}
+            aria-label={t('searchPlaceholder')}
             placeholder={t('searchPlaceholder')}
             style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontSize: '16px', fontWeight: 500, color: 'var(--theme-text)' }}
             autoComplete="off"

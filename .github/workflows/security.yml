@@ -30,6 +30,25 @@ jobs:
       - name: pnpm audit
         run: pnpm audit --audit-level high
 
+      # The only moment the licence of a runtime dependency can actually be
+      # reviewed is the commit that adds it. After that it ships to every
+      # consumer and nobody looks again. The allowlist is deliberately a list
+      # of three names rather than a licence scanner: `pnpm licenses --prod`
+      # is useless here, because pnpm auto-installs the peers and writes them
+      # into importers['.'].dependencies, so it reports payload, @payloadcms/*
+      # and react as if they were ours.
+      - name: Guard - runtime dependency allowlist
+        run: |
+          node -e '
+            const allowed = new Set(["@dnd-kit/core", "@dnd-kit/sortable", "@dnd-kit/utilities"]);
+            const deps = Object.keys(require("./package.json").dependencies || {});
+            const extra = deps.filter((d) => !allowed.has(d));
+            if (extra.length) {
+              console.log("::error::New runtime dependency: " + extra.join(", ") + ". Every runtime dependency ships to consumers: check its licence (and its transitive tree) and add it to the allowlist in .github/workflows/security.yml plus the disclosure in README.md, in this same commit.");
+              process.exit(1);
+            }
+          '
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest

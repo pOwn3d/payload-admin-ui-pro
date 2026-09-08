@@ -3,13 +3,14 @@
 import React, { useEffect, useState } from 'react'
 // @ts-ignore — @payloadcms/ui is a peer dependency
 import { useField } from '@payloadcms/ui'
+import { withAupErrorBoundary } from '../../utils/ErrorBoundary.js'
 
 /**
  * Relation card field — shows a visual card preview for relationship fields.
  * Displays the related doc's title and image (if available).
  * Renders as an enhancement below the default relationship field.
  */
-export const RelationCardField: React.FC<{
+const RelationCardFieldInner: React.FC<{
   path: string
   field: {
     label?: string | Record<string, string>
@@ -129,3 +130,7 @@ const arrowStyle: React.CSSProperties = {
   color: 'var(--theme-elevation-400)',
   flexShrink: 0,
 }
+
+/** Exported through the boundary: Payload mounts this straight from the
+  * import map, so the module itself is the only place a boundary fits. */
+export const RelationCardField = withAupErrorBoundary(RelationCardFieldInner, 'RelationCardField')

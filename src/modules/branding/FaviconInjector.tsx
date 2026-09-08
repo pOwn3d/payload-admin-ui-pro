@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { DESIGN_TOKENS_CSS } from '../../styles/tokens.js'
 import { applyTheme } from '../../utils/themeApplier.js'
+import { withAupErrorBoundary } from '../../utils/ErrorBoundary.js'
 
 /**
  * Client component injected via afterNavLinks (runs on EVERY admin page).
@@ -10,7 +11,7 @@ import { applyTheme } from '../../utils/themeApplier.js'
  * - Applies the selected theme dynamically (bypasses cache for freshness)
  * - Updates favicon, title, brand name, and logo from settings
  */
-export const FaviconInjector: React.FC = () => {
+const FaviconInjectorInner: React.FC = () => {
   useEffect(() => {
     // 1. Inject base design tokens CSS globally (deduplicate)
     if (!document.getElementById('aup-design-tokens')) {
@@ -102,3 +103,7 @@ export const FaviconInjector: React.FC = () => {
 
   return null
 }
+
+/** Exported through the boundary: Payload mounts this straight from the
+  * import map, so the module itself is the only place a boundary fits. */
+export const FaviconInjector = withAupErrorBoundary(FaviconInjectorInner, 'FaviconInjector')

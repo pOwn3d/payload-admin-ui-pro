@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
+import { withAupErrorBoundary } from '../../utils/ErrorBoundary.js'
 
 interface ActiveEditor {
   userId: string
@@ -23,7 +24,7 @@ const STALE_THRESHOLD = 30_000 // 30s
  * Uses a simple heartbeat system via Payload preferences.
  * Injected via afterDocControls on document edit pages.
  */
-export const PresenceIndicator: React.FC = () => {
+const PresenceIndicatorInner: React.FC = () => {
   const [editors, setEditors] = useState<ActiveEditor[]>([])
 
   useEffect(() => {
@@ -127,3 +128,7 @@ const avatarStyle: React.CSSProperties = {
   marginLeft: '-6px',
   cursor: 'default',
 }
+
+/** Exported through the boundary: Payload mounts this straight from the
+  * import map, so the module itself is the only place a boundary fits. */
+export const PresenceIndicator = withAupErrorBoundary(PresenceIndicatorInner, 'PresenceIndicator')

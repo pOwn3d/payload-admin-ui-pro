@@ -229,6 +229,27 @@ export interface ActivityModuleConfig {
   skipCollections?: string[]
   /** Auto-delete logs older than N days (default: 90) */
   retentionDays?: number
+  /**
+   * Run the retention purge automatically, as a Payload Jobs task.
+   *
+   * `true` schedules it daily at 03:00; a string is used as the cron expression
+   * (Payload's parser accepts an optional leading seconds field). Left off,
+   * `retentionDays` only bounds the manual
+   * `DELETE /api/admin-ui-pro/activity/cleanup` endpoint — which nothing calls
+   * on its own, so nothing is ever purged.
+   *
+   * OFF BY DEFAULT, because turning it on has two consequences the plugin has
+   * no business deciding for the host:
+   *  - Payload appends its `payload-jobs` collection as soon as a task exists,
+   *    plus a `payload-jobs-stats` global for a scheduled one. On an app that
+   *    uses no jobs, that is two new tables to migrate.
+   *  - the job still needs a runner (`payload jobs:handle-schedules` then
+   *    `payload jobs:run`, or `jobs.autoRun`). Without one it is registered and
+   *    idle.
+   */
+  retentionSchedule?: boolean | string
+  /** Queue the retention job is filed under (default: 'default'). */
+  retentionQueue?: string
   /** Record which fields changed (default: true) */
   trackFields?: boolean
   /**

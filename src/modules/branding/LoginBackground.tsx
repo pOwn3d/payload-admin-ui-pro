@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { fetchSettings } from '../../utils/settingsCache.js'
 import { getThemeById } from '../../utils/themeApplier.js'
 import { isSafeDataImageUri } from '../../utils/security.js'
+import { AupErrorBoundary } from '../../utils/ErrorBoundary.js'
 
 /**
  * Quote a value for a CSS `url()`.
@@ -20,17 +21,6 @@ import { isSafeDataImageUri } from '../../utils/security.js'
  */
 function cssUrlToken(value: string): string {
   return value.replace(/[\\"]/g, '\\$&').replace(/[\r\n\f]/g, '')
-}
-
-/** Inline error boundary — catches crashes without taking down the app */
-class SafeBoundary extends React.Component<
-  { children: React.ReactNode; fallback: React.ReactNode },
-  { hasError: boolean }
-> {
-  state = { hasError: false }
-  static getDerivedStateFromError() { return { hasError: true } }
-  componentDidCatch(e: Error) { console.warn('[admin-ui-pro] LoginBackground error caught:', e.message) }
-  render() { return this.state.hasError ? this.props.fallback : this.props.children }
 }
 
 interface LoginSettings {
@@ -69,8 +59,10 @@ const LoginBackgroundInner: React.FC<{ children?: React.ReactNode }> = ({ childr
       } catch { /* ignore */ }
     }
 
-    // Fetch from global settings directly (bypass cache — login page needs fresh data)
-    fetch('/api/globals/aup-settings', { credentials: 'include' })
+    // Narrow public endpoint, not `/api/globals/aup-settings`: this page has no
+    // session, so whatever it asks for is what an anonymous visitor gets. The
+    // endpoint answers with the nine branding values and nothing else.
+    fetch('/api/admin-ui-pro/branding', { credentials: 'include' })
       .then((res) => res.ok ? res.json() : null)
       .then((data: any) => {
       if (!mounted) return
@@ -173,6 +165,10 @@ const LoginBackgroundInner: React.FC<{ children?: React.ReactNode }> = ({ childr
         }
       }
     })
+      // An error boundary only catches render-time throws. A network failure
+      // here would otherwise surface as an unhandled promise rejection in the
+      // administrator's console on the login page.
+      .catch(() => {})
 
     return () => { mounted = false }
   }, [])
@@ -405,10 +401,20 @@ export function sanitizeCSS(value: string): string {
 }
 
 
+/**
+ * The boundary is not optional decoration here: this component is injected into
+ * `beforeLogin`, so a throw during its render takes down the login page — and a
+ * login page that does not render locks EVERY administrator out of the panel,
+ * with no way back in through the UI.
+ *
+ * The fallback is `children` and not `null` on purpose, and it is safe: what may
+ * throw is `LoginBackgroundInner`, never `children`, which is whatever Payload
+ * placed in the slot. Dropping it would remove host content that was working.
+ */
 export const LoginBackground: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   return (
-    <SafeBoundary fallback={<>{children}</>}>
+    <AupErrorBoundary componentName="LoginBackground" fallback={<>{children}</>}>
       <LoginBackgroundInner>{children}</LoginBackgroundInner>
-    </SafeBoundary>
+    </AupErrorBoundary>
   )
 }

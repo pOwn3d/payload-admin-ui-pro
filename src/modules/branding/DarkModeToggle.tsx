@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
+import { withAupErrorBoundary } from '../../utils/ErrorBoundary.js'
 
 type ThemeMode = 'light' | 'dark' | 'auto'
 
@@ -11,7 +12,7 @@ const STORAGE_KEY = 'aup-theme-mode'
  * Cycles through: auto → light → dark.
  * Persists preference in localStorage.
  */
-export const DarkModeToggle: React.FC = () => {
+const DarkModeToggleInner: React.FC = () => {
   const [mode, setMode] = useState<ThemeMode>('auto')
 
   // Read preference on mount
@@ -73,3 +74,7 @@ const btnStyle: React.CSSProperties = {
   justifyContent: 'center',
   transition: 'background 150ms',
 }
+
+/** Exported through the boundary: Payload mounts this straight from the
+  * import map, so the module itself is the only place a boundary fits. */
+export const DarkModeToggle = withAupErrorBoundary(DarkModeToggleInner, 'DarkModeToggle')

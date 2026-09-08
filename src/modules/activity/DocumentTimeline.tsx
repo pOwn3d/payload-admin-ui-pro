@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { useAupT } from '../../utils/useTranslation.js'
+import { withAupErrorBoundary } from '../../utils/ErrorBoundary.js'
 
 interface TimelineEntry {
   id: string
@@ -16,7 +17,7 @@ interface TimelineEntry {
  * Injected via afterDocument or as a field UI component.
  * Reads from activity-log filtered by collection + docId.
  */
-export const DocumentTimeline: React.FC = () => {
+const DocumentTimelineInner: React.FC = () => {
   const t = useAupT()
   const [entries, setEntries] = useState<TimelineEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -203,3 +204,7 @@ const fieldBadgeStyle: React.CSSProperties = {
   color: 'var(--theme-elevation-600)',
   fontFamily: 'var(--aup-font-numeric)',
 }
+
+/** Exported through the boundary: Payload mounts this straight from the
+  * import map, so the module itself is the only place a boundary fits. */
+export const DocumentTimeline = withAupErrorBoundary(DocumentTimelineInner, 'DocumentTimeline')

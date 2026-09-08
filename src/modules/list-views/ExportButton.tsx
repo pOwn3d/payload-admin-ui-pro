@@ -71,6 +71,19 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ collection, totalDoc
       const allDocs: Record<string, unknown>[] = []
 
       for (let page = 1; page <= pages; page++) {
+        // NO `select[...]` HERE, DELIBERATELY.
+        //
+        // Every other list fetch in this package restricts the fields it asks
+        // for, and `src/__tests__/listFetches.test.ts` enforces it — this one is
+        // the documented exception, asserted there too.
+        //
+        // The columns of the CSV are derived below from `Object.keys(allDocs[0])`:
+        // the component has no field list, no schema and no way to obtain one
+        // from the client. A whitelist would therefore have to be guessed, and
+        // every field it failed to guess would silently vanish from the export —
+        // a truncated export that looks complete is worse than a heavier fetch.
+        // `depth=0` already keeps relationships from being populated, and the
+        // page count is capped at 5 just below.
         const url = `/api/${collection}?limit=${limit}&page=${page}&depth=0&sort=-updatedAt`
         const res = await fetch(url, { credentials: 'include' })
         if (!res.ok) break

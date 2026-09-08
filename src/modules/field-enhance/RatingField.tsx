@@ -3,12 +3,13 @@
 import React from 'react'
 // @ts-ignore — @payloadcms/ui is a peer dependency
 import { useField } from '@payloadcms/ui'
+import { withAupErrorBoundary } from '../../utils/ErrorBoundary.js'
 
 /**
  * Rating field — replaces a number input (0-5 or 0-10) with clickable stars.
  * Uses Payload's useField hook.
  */
-export const RatingField: React.FC<{
+const RatingFieldInner: React.FC<{
   path: string
   field: {
     label?: string | Record<string, string>
@@ -101,3 +102,7 @@ const descStyle: React.CSSProperties = {
   color: 'var(--theme-elevation-500)',
   margin: '0.375rem 0 0',
 }
+
+/** Exported through the boundary: Payload mounts this straight from the
+  * import map, so the module itself is the only place a boundary fits. */
+export const RatingField = withAupErrorBoundary(RatingFieldInner, 'RatingField')

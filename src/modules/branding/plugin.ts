@@ -1,5 +1,6 @@
 import type { Config } from 'payload'
 import type { BrandingModuleConfig, AdminUiProConfig } from '../../types.js'
+import { createBrandingEndpoints } from './endpoints.js'
 
 /**
  * Branding sub-module.
@@ -56,6 +57,14 @@ export function brandingModule(
       ...(Array.isArray(existingAfterNav) ? existingAfterNav : [existingAfterNav]),
       faviconPath,
       '@consilioweb/payload-admin-ui-pro/client#DarkModeToggle',
+    ]
+
+    // 4. Narrow public endpoint for the login page.
+    //    The login page is unauthenticated and needs nine values; it used to
+    //    read the entire settings global to get them.
+    config.endpoints = [
+      ...(config.endpoints || []),
+      ...createBrandingEndpoints(),
     ]
 
     // 3. Set titleSuffix if provided

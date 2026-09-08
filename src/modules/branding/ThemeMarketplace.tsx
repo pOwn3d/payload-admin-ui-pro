@@ -89,6 +89,7 @@ export const ThemeMarketplace: React.FC = () => {
         <textarea
           value={importValue}
           onChange={(e) => setImportValue(e.target.value)}
+          aria-label={t('themePasteHere')}
           placeholder={t('themePasteHere')}
           style={textareaStyle}
           rows={4}

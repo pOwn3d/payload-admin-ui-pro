@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react'
 import { CustomListView } from './CustomListView.js'
 import type { ViewMode } from './types.js'
+import { withAupErrorBoundary } from '../../utils/ErrorBoundary.js'
 
 /**
  * Wrapper injected via beforeListTable.
@@ -13,7 +14,7 @@ import type { ViewMode } from './types.js'
  * Uses state + effect to handle timing: the registry may not be populated
  * at first render since ListViewsInitializer runs in a useEffect.
  */
-export const CustomListViewWrapper: React.FC = () => {
+const CustomListViewWrapperInner: React.FC = () => {
   const slug = extractCollectionSlug()
   const [config, setConfig] = useState<ListViewConfigEntry | null>(null)
 
@@ -113,3 +114,7 @@ function extractCollectionSlug(): string | null {
   const match = window.location.pathname.match(/\/admin\/collections\/([^/]+)/)
   return match ? match[1] : null
 }
+
+/** Exported through the boundary: Payload mounts this straight from the
+  * import map, so the module itself is the only place a boundary fits. */
+export const CustomListViewWrapper = withAupErrorBoundary(CustomListViewWrapperInner, 'CustomListViewWrapper')

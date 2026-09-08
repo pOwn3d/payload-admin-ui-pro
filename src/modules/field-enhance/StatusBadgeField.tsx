@@ -3,6 +3,7 @@
 import React from 'react'
 // @ts-ignore — @payloadcms/ui is a peer dependency
 import { useField } from '@payloadcms/ui'
+import { withAupErrorBoundary } from '../../utils/ErrorBoundary.js'
 
 interface Option {
   label: string | Record<string, string>
@@ -13,7 +14,7 @@ interface Option {
  * Status badge field — replaces a select field with colored pill badges.
  * Uses Payload's useField hook.
  */
-export const StatusBadgeField: React.FC<{
+const StatusBadgeFieldInner: React.FC<{
   path: string
   field: {
     label?: string | Record<string, string>
@@ -54,7 +55,7 @@ export const StatusBadgeField: React.FC<{
 /**
  * Status badge cell — compact badge for list view table cells.
  */
-export const StatusBadgeCell: React.FC<{ cellData: string }> = ({ cellData }) => {
+const StatusBadgeCellInner: React.FC<{ cellData: string }> = ({ cellData }) => {
   if (!cellData) return null
   return (
     <span style={cellBadgeStyle(cellData)}>
@@ -168,3 +169,11 @@ function cellBadgeStyle(status: string): React.CSSProperties {
     color: colors.text,
   }
 }
+
+/** Exported through the boundary: Payload mounts this straight from the
+  * import map, so the module itself is the only place a boundary fits. */
+export const StatusBadgeField = withAupErrorBoundary(StatusBadgeFieldInner, 'StatusBadgeField')
+
+/** Exported through the boundary: Payload mounts this straight from the
+  * import map, so the module itself is the only place a boundary fits. */
+export const StatusBadgeCell = withAupErrorBoundary(StatusBadgeCellInner, 'StatusBadgeCell')

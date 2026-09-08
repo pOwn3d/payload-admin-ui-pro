@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useAupT } from '../../utils/useTranslation.js'
+import { useDialogA11y } from '../../utils/dialogA11y.js'
 
 type Step = 'theme' | 'brand' | 'dashboard' | 'done'
 
@@ -43,6 +44,10 @@ export const OnboardingWizard: React.FC = () => {
     complete()
   }, [complete])
 
+  const dialogRef = useRef<HTMLDivElement>(null)
+  // Escape skips the wizard, like the overlay click and the skip button do.
+  useDialogA11y({ containerRef: dialogRef, open: visible, onClose: skip })
+
   if (!visible) return null
 
   if (step === 'done') {
@@ -81,7 +86,7 @@ export const OnboardingWizard: React.FC = () => {
   return (
     <>
       <div style={overlayStyle} onClick={skip} aria-hidden="true" />
-      <div style={modalStyle} role="dialog" aria-label="Onboarding">
+      <div ref={dialogRef} style={modalStyle} role="dialog" aria-modal="true" aria-label="Onboarding">
         {/* Progress */}
         <div style={progressStyle}>
           {[0, 1, 2].map((i) => (

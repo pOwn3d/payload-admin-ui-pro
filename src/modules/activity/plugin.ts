@@ -4,6 +4,7 @@ import { createActivityLogCollection } from './collection.js'
 import { createAfterChangeHook, createAfterDeleteHook } from './hooks.js'
 import { createActivityEndpoints } from './endpoints.js'
 import { resolveUserCollectionSlug } from '../../utils/userCollection.js'
+import { createActivityCleanupTask, DEFAULT_RETENTION_CRON } from './retention.js'
 
 const LOG_COLLECTION_SLUG = 'activity-log'
 
@@ -65,6 +66,42 @@ export function activityModule(
       ...(config.endpoints || []),
       ...createActivityEndpoints(LOG_COLLECTION_SLUG, retentionDays),
     ]
+
+    // 2b. Scheduled retention — opt-in, and deliberately so.
+    //
+    // `retentionDays` was a promise nothing kept: the only reader was the manual
+    // cleanup endpoint. A Payload Jobs task is the right mechanism (setInterval
+    // does not survive serverless and fires once per instance behind a load
+    // balancer), but declaring one is NOT free, and the cost has to be the
+    // integrator's decision:
+    //
+    //  - `sanitizeConfig` sets `jobs.enabled` as soon as one task exists and then
+    //    appends Payload's `payload-jobs` COLLECTION; a task carrying `schedule`
+    //    additionally appends the `payload-jobs-stats` GLOBAL. On a host that
+    //    uses no jobs today, switching this on is two new tables — an additive
+    //    schema change that production has to migrate.
+    //  - a scheduled task only runs if something drives the queue
+    //    (`payload jobs:handle-schedules` + `payload jobs:run`, or `jobs.autoRun`).
+    //    Registering it by default would have paid the schema cost on every host
+    //    while purging nothing on most of them.
+    //
+    // So: off unless asked for. `true` uses the daily default, a string is taken
+    // as the cron expression. The manual endpoint stays in both cases.
+    const scheduleOption = moduleConfig?.retentionSchedule
+    if (scheduleOption) {
+      const cron = typeof scheduleOption === 'string' ? scheduleOption : DEFAULT_RETENTION_CRON
+      const jobs = { ...(config.jobs || {}) }
+      jobs.tasks = [
+        ...(jobs.tasks || []),
+        createActivityCleanupTask({
+          logCollectionSlug: LOG_COLLECTION_SLUG,
+          retentionDays,
+          cron,
+          queue: moduleConfig?.retentionQueue || 'default',
+        }) as never,
+      ]
+      config.jobs = jobs
+    }
 
     // 3. Attach hooks to all tracked collections
     config.collections = config.collections.map((col) => {

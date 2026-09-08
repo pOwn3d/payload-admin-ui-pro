@@ -1,25 +1,45 @@
 'use client'
 
-import React from 'react'
+import React, { useId } from 'react'
 // @ts-ignore — @payloadcms/ui is a peer dependency
 import { useField } from '@payloadcms/ui'
+import { withAupErrorBoundary } from '../../utils/ErrorBoundary.js'
 
 /**
  * Toggle switch — replaces the default checkbox with a visual switch.
  * Uses Payload's useField hook for data binding.
  */
-export const ToggleField: React.FC<{ path: string; field: { label?: string | Record<string, string>; admin?: { description?: string | Record<string, string> } } }> = ({ path, field }) => {
+const ToggleFieldInner: React.FC<{ path: string; field: { label?: string | Record<string, string>; admin?: { description?: string | Record<string, string> } } }> = ({ path, field }) => {
   const { value, setValue } = useField<boolean>({ path })
   const label = resolveLabel(field.label)
   const description = resolveLabel(field.admin?.description)
 
+  // `useId` and not a literal: this component renders once per enhanced
+  // checkbox, and a localised collection renders it once per language tab.
+  // Duplicated ids break the very association being created here.
+  const reactId = useId()
+  const labelId = `${reactId}-label`
+
   return (
     <div style={wrapperStyle}>
-      {label && <label style={labelStyle}>{label}</label>}
+      {/*
+        The switch used to have NO accessible name at all: `role="switch"` and
+        `aria-checked` were correct, but the label next to it was a bare
+        `<label>` bound to nothing, so a screen reader announced "switch, off"
+        with no indication of WHICH setting was being toggled.
+
+        `htmlFor` is what restores the click target (a `<button>` is a labelable
+        element), and `aria-labelledby` is what makes the name unambiguous —
+        the accessible-name algorithm prefers a button's own content, which is
+        empty here.
+      */}
+      {label && <label id={labelId} htmlFor={reactId} style={labelStyle}>{label}</label>}
       <button
         type="button"
+        id={reactId}
         role="switch"
         aria-checked={!!value}
+        aria-labelledby={label ? labelId : undefined}
         onClick={() => setValue(!value)}
         style={{
           ...trackStyle,
@@ -89,3 +109,7 @@ const descStyle: React.CSSProperties = {
   color: 'var(--theme-elevation-500)',
   margin: '0.375rem 0 0',
 }
+
+/** Exported through the boundary: Payload mounts this straight from the
+  * import map, so the module itself is the only place a boundary fits. */
+export const ToggleField = withAupErrorBoundary(ToggleFieldInner, 'ToggleField')

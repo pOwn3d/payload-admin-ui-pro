@@ -3,6 +3,7 @@ import { rateLimit, rateLimitResponse, userRateLimitKey } from '../../utils/secu
 import { isAdminRole } from '../../utils/rbac.js'
 import { isAdminCollectionUser } from '../../utils/userCollection.js'
 import { canAccessActivityLog } from './collection.js'
+import { purgeExpiredActivity } from './retention.js'
 
 /**
  * Activity log API endpoints.
@@ -181,21 +182,17 @@ export function createActivityEndpoints(
         if (!rateLimit(key, 5)) return rateLimitResponse()
 
         try {
-          const cutoff = new Date()
-          cutoff.setDate(cutoff.getDate() - retentionDays)
-
-          const result = await req.payload.delete({
-            collection: logCollectionSlug,
-            where: {
-              timestamp: { less_than: cutoff.toISOString() },
-            },
-            overrideAccess: true,
+          // Same cutoff as the scheduled job — one implementation, so the
+          // manual button and the nightly task cannot disagree about what
+          // "older than retentionDays" means.
+          const { deleted, cutoffDate } = await purgeExpiredActivity({
+            payload: req.payload as never,
+            logCollectionSlug,
+            retentionDays,
           })
 
-          const deleted = Array.isArray(result.docs) ? result.docs.length : 0
-
           return new Response(
-            JSON.stringify({ deleted, cutoffDate: cutoff.toISOString() }),
+            JSON.stringify({ deleted, cutoffDate }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           )
         } catch {

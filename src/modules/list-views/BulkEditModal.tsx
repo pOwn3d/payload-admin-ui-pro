@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
 import { useAupT } from '../../utils/useTranslation.js'
+import { useDialogA11y } from '../../utils/dialogA11y.js'
 
 interface BulkEditModalProps {
   collection: string
@@ -26,6 +27,8 @@ export const BulkEditModal: React.FC<BulkEditModalProps> = ({
   onComplete,
 }) => {
   const t = useAupT()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogA11y({ containerRef: dialogRef, open: true, onClose })
   const [fields, setFields] = useState<FieldEdit[]>([{ field: '', value: '' }])
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<{ success: number; failed: number } | null>(null)
@@ -86,7 +89,7 @@ export const BulkEditModal: React.FC<BulkEditModalProps> = ({
       <div style={overlayStyle} onClick={onClose} aria-hidden="true" />
 
       {/* Modal */}
-      <div style={modalStyle} role="dialog" aria-label={t('bulkEditTitle')}>
+      <div ref={dialogRef} style={modalStyle} role="dialog" aria-modal="true" aria-label={t('bulkEditTitle')}>
         <h3 style={titleStyle}>
           {t('bulkEditTitle')} — {selectedIds.length} document{selectedIds.length !== 1 ? 's' : ''}
         </h3>
@@ -97,12 +100,14 @@ export const BulkEditModal: React.FC<BulkEditModalProps> = ({
               <input
                 value={f.field}
                 onChange={(e) => updateField(i, 'field', e.target.value)}
+                aria-label={t('fieldName')}
                 placeholder={t('fieldName')}
                 style={inputStyle}
               />
               <input
                 value={f.value}
                 onChange={(e) => updateField(i, 'value', e.target.value)}
+                aria-label={t('fieldValue')}
                 placeholder={t('fieldValue')}
                 style={{ ...inputStyle, flex: 2 }}
               />

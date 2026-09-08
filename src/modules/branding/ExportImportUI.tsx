@@ -118,6 +118,7 @@ export const ExportImportUI: React.FC = () => {
         <textarea
           value={importValue}
           onChange={(e) => setImportValue(e.target.value)}
+          aria-label={t('importConfig')}
           placeholder={t('pasteJsonHere')}
           style={textareaStyle}
           rows={6}

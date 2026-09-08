@@ -1,5 +1,204 @@
 # Changelog
 
+## [0.7.0] - 2026-09-08 — Controls that say what they are, a boundary that holds, and a log that forgets
+
+Not a security release. Nothing here closes a vulnerability, and if you are still below 0.6.0 that
+is the upgrade that matters — this one changes nothing about who can reach what. It is for panels
+that have to answer to the EAA or to the RGAA, for anyone who has watched one injected component
+take down a whole admin page, and for hosts who need to know what this plugin does to their database
+and how to get rid of it. No schema change and no breaking change: upgrade when it suits you.
+
+### Accessibility
+
+- **Twelve inputs, textareas and selects had no accessible name at all.** A `placeholder` is not a
+  name — it is a hint, it disappears the moment the field has content, and several assistive
+  technologies never announce it. What a screen-reader user got was "edit text", with nothing to say
+  what was being edited. The controls: the two config textareas (`ExportImportUI`,
+  `ThemeMarketplace`), the nav rename input (`MenuEditor`), the filter and view name inputs
+  (`SavedFilters`, `SavedViews`), both fields of the bulk editor (`BulkEditModal`), the bulk status
+  select (`BulkActionBar`), the notes textarea (`NotesWidget`), the palette search
+  (`CommandPalette`), and both editors of `InlineEditCell` — the last two named after the field
+  being edited, since a table cell has no other context to offer. All of them are `aria-label`,
+  because none of these controls had a `<label>` to bind to; `src/__tests__/accessibleNames.test.ts`
+  additionally asserts that every key they pass through `t()` actually exists in the dictionaries,
+  since a missing key makes the helper return the key itself and the screen reader would announce
+  "notesPlaceholder".
+- **The toggle switch had a label bound to nothing.** `role="switch"` and `aria-checked` were
+  already correct, so it announced "switch, off" — correct, and useless, because nothing said which
+  setting. The `<label>` next to it carried no `htmlFor`. It now does, and the switch carries
+  `aria-labelledby`: `htmlFor` restores the click target (a `<button>` is a labelable element) and
+  `aria-labelledby` makes the name unambiguous, the accessible-name algorithm preferring a button's
+  own content, which is empty here. The ids come from `useId()` and not from a literal, because this
+  component renders once per enhanced checkbox and a localised collection renders it once per
+  language tab — duplicated ids would break the very association being created.
+- **The focus indicator was invisible.** The stylesheet suppresses the native outline on every input
+  of the panel (`outline: none !important`, a selector that reaches Payload's own login form) and
+  replaced it with a ring built from `--aup-accent-subtle` — the 12 % wash used for row and card
+  hover. Measured against a white input background that is 1.19:1, where WCAG 1.4.11 asks 3:1 of a
+  focus indicator. There is now a token of its own, `--aup-focus-ring`, at 70 % in light (3.31:1);
+  the same 70 % over Payload's dark elevation-0 would only reach 2.84:1, so the dark declaration is
+  90 % (~4.0:1). The hover token is deliberately left where it was — raising the shared value would
+  have made every hovered row glaring.
+- **The five dialogs were dialogs in name only.** All of them declared `role="dialog"` with an
+  `aria-label` and stopped there — a dialog assistive technology announces but does not isolate.
+  `Tab` walked straight out into the admin panel behind, which was still there, still clickable and
+  still read out; closing one dropped focus to `<body>`, so the next `Tab` restarted from the top of
+  the page; and only the command palette closed on `Escape`. The new `useDialogA11y` hook adds
+  containment, focus restoration and `Escape` to the onboarding wizard, the shortcuts help, the bulk
+  edit modal, the gallery lightbox and the palette, and each now declares `aria-modal="true"` — the
+  declaration being a promise the three behaviours are what make true. Only the two ends of the
+  focus ring are intercepted, never every `Tab`, so composite widgets keep the browser's own order.
+  Four of the five dialogs could previously only be dismissed with the mouse, by clicking the
+  overlay; `Escape` is the keyboard equivalent they were missing.
+- **The gallery opened its lightbox from an `<img>`.** An `<img onClick>` nested inside the tile's
+  `<a>`, cancelling with `preventDefault()` the navigation it was sitting on: an image takes no
+  focus and answers no key, so viewing a full-size image required a mouse, and the anchor announced
+  "link, open document" for something that did not open the document. Two actions, so two elements
+  now — a real `<button type="button">` with `aria-label` around the image for the preview, the
+  filename below staying the link to the document, as it always was.
+
+### Fixed
+
+- **The error boundary re-rendered the very children that had just thrown.** `SafeErrorBoundary`
+  (`src/utils/SafeProvider.tsx`) returned `this.props.fallback ?? this.props.children ?? null`.
+  Called without a `fallback` — which was every intended call site, the docblock advertising a
+  "silent catch" — it put the crashed subtree straight back on screen. It threw again, React caught
+  again, and after a few cycles React gives up on a boundary that keeps failing and unmounts the
+  whole root: the exact opposite of what it promised. The replacement, `AupErrorBoundary`, defaults
+  to `null` and never treats `children` as a fallback. It also bumps a `resetCount` used as the
+  wrapper `key`, so a reset remounts the subtree instead of resuming the instance that threw with
+  the state that made it throw.
+- **Sixteen components injected into somebody else's admin panel now fail alone.** The radius is the
+  point: `FaviconInjector`, `NotificationBell`, `DarkModeToggle` and `CommandPaletteProvider` sit in
+  `afterNavLinks` and render on *every* admin page; the five field enhancements render once per
+  field row and `StatusBadgeCell` once per table cell; `LoginBackground` sits in `beforeLogin`, and
+  a login page that does not render locks every administrator out of the panel with no way back in
+  through the UI. Without a boundary, one exception in any of them takes the whole page with it
+  rather than its own corner. Fifteen of the sixteen are wrapped at their own module level through
+  `withAupErrorBoundary`, keeping the export name the import map references — Payload mounts these
+  straight from the import map, so the plugin never gets to be their parent in the host's tree and
+  the module is the only place a boundary fits. `LoginBackground` keeps an explicit boundary whose
+  fallback is `children`, and that is safe there precisely because what can throw is its own inner
+  component, never the host content Payload put in the slot.
+  Two limits stated rather than glossed over: React boundaries only catch throws in render,
+  lifecycle and constructors — a rejected promise in an async `useEffect` and a throw in an event
+  handler both escape, which is why the login page's fetch also gained a `.catch()` that turns a
+  network failure into nothing instead of an unhandled rejection in the administrator's console. And
+  the package's five server components (`SettingsNavLink`, `LoginView`, `DashboardView`, and the two
+  config bridges) are **not** covered, by a client boundary or by `try`/`catch`: Payload mounts them
+  from the import map, so no client boundary can wrap them, and they render static markup from props
+  they are handed — no fetch, no parsing, nothing to throw. They are guarded by having nothing to
+  guard, not by a boundary.
+
+### Added
+
+- **`activity.retentionSchedule` — the retention window finally purges something.** `retentionDays`
+  (default 90) described something that never happened: its only reader was
+  `DELETE /api/admin-ui-pro/activity/cleanup`, an endpoint nothing calls on its own. An audit trail
+  that records every write on every tracked collection and never forgets is a data-minimisation
+  problem that grows by itself, and the integrator who read the option believed it was handled.
+  Set to `true` it registers a Payload Jobs task that deletes every `activity-log` entry older than
+  `retentionDays` daily at 03:00; a string is taken as the cron expression, and
+  `activity.retentionQueue` picks the queue. **Off by default**, and the reasons are in the code:
+  declaring one task makes Payload append its `payload-jobs` collection, and a *scheduled* task adds
+  the `payload-jobs-stats` global — two tables to migrate on a host that uses no jobs — and a
+  scheduled task only fires if something drives the queue (`payload jobs:handle-schedules` then
+  `payload jobs:run`, or `jobs.autoRun`). Paying the schema cost on every host to purge nothing on
+  most of them was the worse trade. `retentionDays <= 0` purges **nothing** and is not an error:
+  emptying the audit trail because a config value was left at its falsy default is a trap, not a
+  feature. The cutoff now lives in one place, so the manual endpoint and the nightly job cannot
+  disagree about what "older than 90 days" means.
+- **`GET /api/admin-ui-pro/branding`, a public endpoint serving nine values instead of the whole
+  settings document.** The login page is unauthenticated by definition and needs the logo, the brand
+  name, the login background, layout, message and footer, the favicon and the theme preset. It got
+  them by fetching `/api/globals/aup-settings` — module toggles, dashboard defaults, menu structure,
+  saved themes, notification rules and all — so anything ever added to that global was, by
+  construction, on the wire of a page nobody had authenticated on yet. **This closes nothing on its
+  own**, and the endpoint's own docblock says so: `access.read` on the global is still `() => true`,
+  so an anonymous caller can still read it directly. What it does is turn the login page's needs
+  into an explicit, reviewable list, which is the prerequisite for a host to be *able* to gate the
+  global later. The whitelist is positive and hand-written on purpose: a `delete settings.x`
+  blacklist leaks the next sensitive field somebody adds.
+- **`npx aup-audit-preferences`, shipped as a `bin`.** The remediation for the `dashboard-preferences`
+  flaw closed in 0.6.0 — that release shut the door, it did not clean up what came through it. The
+  script reports **orphans** (a `user` id matching no document of the admin collection: unreachable
+  rows, planted or left by a deleted account) and **collisions** (an id resolving in the admin
+  collection *and* in another auth collection). `--fix` deletes orphans only; collisions are
+  reported and never deleted, because on any host with two auth collections most of them are
+  legitimate and deleting them would destroy real layouts. It re-executes itself under the host's
+  `payload` bin so a `payload.config.ts` can load, and talks to the database through the Local API,
+  so it works on SQLite, Postgres and Mongo alike. `--json` for machine-readable output, `--slug=`
+  for a custom slug. The `scripts/` directory now ships in the tarball, minus its tests and its
+  dev-only tooling.
+- **A CI guard on runtime dependencies.** The only moment the licence of a runtime dependency can
+  actually be reviewed is the commit that adds it; after that it ships to every consumer and nobody
+  looks again. The `security` workflow now fails on any `dependencies` entry outside the three the
+  package actually has (`@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`), with an error
+  telling the author to check the licence and its transitive tree and to record the addition in the
+  same commit. It is an allowlist of three names and not a licence scanner because
+  `pnpm licenses --prod` is useless here: pnpm auto-installs the peers into
+  `importers['.'].dependencies` and reports `payload`, `@payloadcms/*` and `react` as if they were
+  ours.
+- **`scripts/dev/schema-diff.sh` — "does this release owe a migration?" answered instead of
+  remembered.** It extracts the declarations that actually shape a Payload schema (field `name`,
+  collection and global `slug`, `type`, `relationTo`, and the `unique`/`index`/`required`/`hasMany`/
+  `virtual` flags) at two refs and set-diffs them; everything else a release touches — `access`,
+  `hooks`, `validate`, `admin.description` — is behaviour, and behaviour never needs a migration.
+  Comments are stripped before matching, or the docblocks in this package that quote field names in
+  backticks make every release look like a schema change. Development only, excluded from the
+  tarball. It reports 106 declarations on both sides of `v0.6.0…HEAD`: **this release changes no
+  schema.**
+- **35 missing translations.** `SavedViews` used five keys that existed in none of the seven
+  dictionaries (`savedViews`, `saveView`, `saveCurrentView`, `viewName`, `deleteView`) and leaned on
+  `|| 'English literal'` fallbacks, so a German or Japanese panel showed English there regardless.
+  The keys now exist in all seven locales and the fallbacks are gone from the input placeholder.
+- **107 tests, over six new files** — `accessibleNames`, `errorBoundary`, `dialogA11y`,
+  `brandingEndpoint`, `retention` and the pure logic of the audit script. The suite goes from 202
+  tests over 14 files to **309 over 20**. The a11y ones are textual assertions on the sources, since
+  these components live inside `useEffect` and `react-dom` is not installed here — but each fails on
+  the state of the tree before its fix, which is what a guard is for.
+
+### Changed
+
+- **The login page now reads `/api/admin-ui-pro/branding` instead of `/api/globals/aup-settings`.**
+  Same values on screen; a new public route appears in your app, and the login page stops requesting
+  the settings global. If you proxy, cache or firewall admin API paths, that is one more path to
+  know about.
+- **`Escape` closes the onboarding wizard, the shortcuts help, the bulk edit modal and the gallery
+  lightbox.** They ignored it before. In the wizard, `Escape` skips — the same action as the overlay
+  click and the skip button, not a fourth behaviour.
+- **In the gallery, keyboard focus on an image tile now opens the preview rather than the document.**
+  The image became a button; the filename beneath it remains the link, and is now the keyboard route
+  to the document. Mouse behaviour is unchanged.
+- **`utils/SafeProvider.tsx` is deleted.** It was never listed as a build entry and never re-exported
+  from `./client`, so it was unreachable from outside the package — dead code, not public API.
+- **The wrapped components are the same components.** Same export names, same props, same rendering;
+  the only visible difference is that one that throws now disappears on its own instead of taking
+  the page down, and says why in the console with its name in the message.
+
+### Documentation
+
+- **Four new README sections.** *Database and updates* states what an audit keeps asking and nobody
+  writes down: this plugin adds collections and a global to *your* config but does not own your
+  schema, and it cannot ship migrations for you — Payload resolves them from the host application's
+  single directory, so a migration file inside an npm package is never discovered. `push` in
+  development, `payload migrate:create` then `payload migrate` in production, never `push` there.
+  It also lists the three options that make tables appear and which of them are on by default.
+  *Upgrading* carries a per-version note stating whether the schema changed (so far: never, and now
+  verifiably so). *Maintenance scripts* documents `aup-audit-preferences` and why a collision is
+  reported and not deleted. *Uninstall* gives the removal steps and the exact SQL and Mongo
+  statements for the leftover data, with the warning to check the real table names first (`dbName`
+  overrides them and relationship fields add `_rels` companions) and the warning **not** to drop
+  `payload-jobs` on this plugin's account — those tables are Payload's, and your application may be
+  using them.
+- The endpoint table now distinguishes the ten authenticated routes from the one public one, and the
+  `activity.retentionDays` / `retentionSchedule` / `retentionQueue` rows say what is purged, on what
+  delay, and what has to run for it to happen at all.
+- `ExportButton` carries a comment explaining why it is the one list fetch in the package that does
+  *not* restrict the fields it requests: the CSV columns are derived from the first document's keys,
+  the component has no schema to consult, and a guessed whitelist would silently drop columns —
+  a truncated export that looks complete being worse than a heavier fetch.
+
 ## [0.6.0] - 2026-09-08 — Ownership on the dashboard preferences, and a peer floor that means something
 
 Fourth audit pass, actor by actor. Both flaws below are in every release published so far, 0.5.0 —

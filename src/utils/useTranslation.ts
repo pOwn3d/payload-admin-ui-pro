@@ -166,6 +166,12 @@ const EN: Record<string, string> = {
   menuEditorRenameHint: 'Double-click to rename',
   menuEditorHide: 'Hide',
   menuEditorShow: 'Show',
+  // Saved views
+  savedViews: 'saved',
+  saveView: 'Save View',
+  saveCurrentView: 'Save current view',
+  viewName: 'View name...',
+  deleteView: 'Delete view',
 }
 
 const FR: Record<string, string> = {
@@ -328,6 +334,12 @@ const FR: Record<string, string> = {
   menuEditorRenameHint: 'Double-cliquez pour renommer',
   menuEditorHide: 'Masquer',
   menuEditorShow: 'Afficher',
+  // Saved views
+  savedViews: 'sauvegardees',
+  saveView: 'Sauvegarder la vue',
+  saveCurrentView: 'Sauvegarder la vue actuelle',
+  viewName: 'Nom de la vue...',
+  deleteView: 'Supprimer la vue',
 }
 
 const DE: Record<string, string> = {
@@ -469,6 +481,12 @@ const DE: Record<string, string> = {
   menuEditorRenameHint: 'Doppelklick zum Umbenennen',
   menuEditorHide: 'Ausblenden',
   menuEditorShow: 'Einblenden',
+  // Saved views
+  savedViews: 'gespeichert',
+  saveView: 'Ansicht speichern',
+  saveCurrentView: 'Aktuelle Ansicht speichern',
+  viewName: 'Name der Ansicht...',
+  deleteView: 'Ansicht löschen',
 }
 
 const ES: Record<string, string> = {
@@ -610,6 +628,12 @@ const ES: Record<string, string> = {
   menuEditorRenameHint: 'Doble clic para renombrar',
   menuEditorHide: 'Ocultar',
   menuEditorShow: 'Mostrar',
+  // Saved views
+  savedViews: 'guardadas',
+  saveView: 'Guardar la vista',
+  saveCurrentView: 'Guardar la vista actual',
+  viewName: 'Nombre de la vista...',
+  deleteView: 'Eliminar la vista',
 }
 
 const IT: Record<string, string> = {
@@ -751,6 +775,12 @@ const IT: Record<string, string> = {
   menuEditorRenameHint: 'Doppio clic per rinominare',
   menuEditorHide: 'Nascondi',
   menuEditorShow: 'Mostra',
+  // Saved views
+  savedViews: 'salvate',
+  saveView: 'Salva la vista',
+  saveCurrentView: 'Salva la vista corrente',
+  viewName: 'Nome della vista...',
+  deleteView: 'Elimina la vista',
 }
 
 const PT: Record<string, string> = {
@@ -892,6 +922,12 @@ const PT: Record<string, string> = {
   menuEditorRenameHint: 'Clique duplo para renomear',
   menuEditorHide: 'Ocultar',
   menuEditorShow: 'Mostrar',
+  // Saved views
+  savedViews: 'guardadas',
+  saveView: 'Guardar a vista',
+  saveCurrentView: 'Guardar a vista atual',
+  viewName: 'Nome da vista...',
+  deleteView: 'Eliminar a vista',
 }
 
 const JA: Record<string, string> = {
@@ -1033,6 +1069,12 @@ const JA: Record<string, string> = {
   menuEditorRenameHint: 'ダブルクリックで名前変更',
   menuEditorHide: '非表示',
   menuEditorShow: '表示',
+  // Saved views
+  savedViews: '件保存済み',
+  saveView: 'ビューを保存',
+  saveCurrentView: '現在のビューを保存',
+  viewName: 'ビュー名...',
+  deleteView: 'ビューを削除',
 }
 
 /**

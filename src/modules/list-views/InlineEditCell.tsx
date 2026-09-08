@@ -165,6 +165,7 @@ export const InlineEditCell: React.FC<InlineEditCellProps> = ({
         <span style={wrapperStyle} onClick={handleClick}>
           <select
             ref={inputRef as React.RefObject<HTMLSelectElement>}
+            aria-label={fieldName}
             value={tempValue}
             onChange={(e) => {
               setTempValue(e.target.value)
@@ -190,6 +191,7 @@ export const InlineEditCell: React.FC<InlineEditCellProps> = ({
       <span style={wrapperStyle} onClick={handleClick}>
         <input
           ref={inputRef as React.RefObject<HTMLInputElement>}
+          aria-label={fieldName}
           type={type}
           value={tempValue}
           onChange={(e) => setTempValue(e.target.value)}

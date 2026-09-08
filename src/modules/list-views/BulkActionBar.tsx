@@ -64,6 +64,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({
         {statusField && statusOptions && statusOptions.length > 0 && (
           <select
             onChange={(e) => e.target.value && handleStatusChange(e.target.value)}
+            aria-label={t('bulkStatusChange')}
             defaultValue=""
             style={selectStyle}
             disabled={loading}

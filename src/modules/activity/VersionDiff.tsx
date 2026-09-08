@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { useAupT } from '../../utils/useTranslation.js'
 import { diffFields, type FieldDiff, type WordDiff } from './diffFields.js'
+import { withAupErrorBoundary } from '../../utils/ErrorBoundary.js'
 
 interface VersionEntry {
   id: string
@@ -21,7 +22,7 @@ interface VersionEntry {
  * Injected via afterDocument on collections that have `versions` enabled.
  * Uses the native Payload versions API: GET /api/{collection}/{docId}/versions
  */
-export const VersionDiff: React.FC = () => {
+const VersionDiffInner: React.FC = () => {
   const t = useAupT()
   const [versions, setVersions] = useState<VersionEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -568,3 +569,7 @@ const arrowStyle: React.CSSProperties = {
   color: 'var(--theme-elevation-400)',
   fontSize: '11px',
 }
+
+/** Exported through the boundary: Payload mounts this straight from the
+  * import map, so the module itself is the only place a boundary fits. */
+export const VersionDiff = withAupErrorBoundary(VersionDiffInner, 'VersionDiff')

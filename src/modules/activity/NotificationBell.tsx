@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useAupT } from '../../utils/useTranslation.js'
+import { withAupErrorBoundary } from '../../utils/ErrorBoundary.js'
 
 interface Notification {
   id: string
@@ -17,7 +18,7 @@ interface Notification {
  * Injected via afterNavLinks. Fetches recent activity log entries.
  * Shows a red dot when there are unread notifications.
  */
-export const NotificationBell: React.FC = () => {
+const NotificationBellInner: React.FC = () => {
   const t = useAupT()
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState<Notification[]>([])
@@ -238,3 +239,7 @@ const timeStyle: React.CSSProperties = {
   fontSize: '11px', color: 'var(--theme-elevation-400)',
   marginTop: '2px', display: 'block',
 }
+
+/** Exported through the boundary: Payload mounts this straight from the
+  * import map, so the module itself is the only place a boundary fits. */
+export const NotificationBell = withAupErrorBoundary(NotificationBellInner, 'NotificationBell')

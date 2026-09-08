@@ -3,12 +3,13 @@
 import React from 'react'
 // @ts-ignore — @payloadcms/ui is a peer dependency
 import { useField } from '@payloadcms/ui'
+import { withAupErrorBoundary } from '../../utils/ErrorBoundary.js'
 
 /**
  * Image preview field — shows a large inline preview for upload/relationship fields
  * that point to media. Renders below the default field component.
  */
-export const ImagePreviewField: React.FC<{
+const ImagePreviewFieldInner: React.FC<{
   path: string
   field: { label?: string | Record<string, string> }
 }> = ({ path }) => {
@@ -63,3 +64,7 @@ const imgStyle: React.CSSProperties = {
   maxHeight: '200px',
   objectFit: 'cover',
 }
+
+/** Exported through the boundary: Payload mounts this straight from the
+  * import map, so the module itself is the only place a boundary fits. */
+export const ImagePreviewField = withAupErrorBoundary(ImagePreviewFieldInner, 'ImagePreviewField')

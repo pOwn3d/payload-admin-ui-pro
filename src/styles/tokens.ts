@@ -9,6 +9,14 @@ export const DESIGN_TOKENS_CSS = `
   --aup-accent: hsl(250, 84%, 60%);
   --aup-accent-hover: hsl(250, 84%, 55%);
   --aup-accent-subtle: hsl(250, 84%, 60% / 0.12);
+  /* Focus ring — deliberately NOT --aup-accent-subtle.
+   * That token is the row/card hover wash, where 12 % is the right amount, and
+   * it was doing double duty as the focus indicator that replaces the browser
+   * outline this stylesheet suppresses. Measured against a white input
+   * background, 12 % gives 1.19:1 and 45 % still only 2.07:1 — both below the
+   * 3:1 WCAG 1.4.11 asks of a focus indicator. 70 % gives 3.31:1. Raising the
+   * shared token instead would have made every hover row glaring. */
+  --aup-focus-ring: hsl(250, 84%, 60% / 0.70);
   --aup-accent-border: hsl(250, 84%, 60% / 0.30);
   --aup-green: hsl(158, 64%, 42%);
   --aup-green-subtle: hsl(158, 64%, 42% / 0.12);
@@ -42,6 +50,9 @@ export const DESIGN_TOKENS_CSS = `
 [data-theme="dark"] {
   --aup-accent: hsl(250, 84%, 68%);
   --aup-accent-subtle: hsl(250, 84%, 68% / 0.15);
+  /* 90 % over Payload's dark elevation-0 (rgb(20,20,20)) measures ~4.0:1;
+   * 70 % would only reach 2.84:1. */
+  --aup-focus-ring: hsl(250, 84%, 68% / 0.90);
   --aup-accent-border: hsl(250, 84%, 68% / 0.35);
   --aup-green: hsl(158, 64%, 52%);
   --aup-green-subtle: hsl(158, 64%, 52% / 0.15);
@@ -477,7 +488,10 @@ select:focus,
 [class*="field__input"]:focus,
 [class*="text-input"]:focus {
   border-color: var(--aup-accent) !important;
-  box-shadow: 0 0 0 2px var(--aup-accent-subtle) !important;
+  box-shadow: 0 0 0 2px var(--aup-focus-ring) !important;
+  /* Suppressing the native outline is only defensible because the two lines
+   * above replace it with a ring of equivalent contrast. This selector reaches
+   * every input of the panel, Payload's own login form included. */
   outline: none !important;
   transition: border-color var(--aup-duration-fast), box-shadow var(--aup-duration-fast) !important;
 }

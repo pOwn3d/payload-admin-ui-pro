@@ -128,6 +128,8 @@ export default defineConfig([
       'src/modules/activity/ActivityAnalytics.tsx',
       'src/styles/tokens.ts',
       'src/styles/theme-presets.ts',
+      'src/utils/ErrorBoundary.tsx',
+      'src/utils/dialogA11y.ts',
       'src/utils/themeApplier.ts',
       'src/utils/useTranslation.ts',
       'src/utils/collectionsCache.ts',

@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
+import { useDialogA11y } from '../../utils/dialogA11y.js'
 import type { ListViewComponentProps } from './types.js'
 
 /**
@@ -18,6 +19,9 @@ export const GalleryListView: React.FC<ListViewComponentProps> = ({
   onPageChange,
 }) => {
   const [lightbox, setLightbox] = useState<string | null>(null)
+  const lightboxRef = useRef<HTMLDivElement>(null)
+  const closeLightbox = useCallback(() => setLightbox(null), [])
+  useDialogA11y({ containerRef: lightboxRef, open: Boolean(lightbox), onClose: closeLightbox })
   const totalPages = Math.ceil(totalDocs / limit)
 
   if (loading) {
@@ -36,32 +40,39 @@ export const GalleryListView: React.FC<ListViewComponentProps> = ({
 
           return (
             <div key={doc.id} style={itemStyle}>
-              <a
-                href={`/admin/collections/${collection}/${doc.id}`}
-                style={linkStyle}
-              >
-                {isImage ? (
-                  <img
-                    src={url}
-                    alt={alt}
-                    style={imgStyle}
-                    loading="lazy"
-                    onClick={(e) => {
-                      if (url) {
-                        e.preventDefault()
-                        setLightbox(url)
-                      }
-                    }}
-                  />
-                ) : (
+              {/*
+                An image opens the lightbox, a file opens the document — two
+                different actions, so two different elements.
+
+                They used to be one: an `<img onClick>` nested inside the `<a>`,
+                calling `preventDefault()` to cancel the navigation it was
+                sitting on. An `<img>` takes no focus and answers no key, so the
+                only way to view an image full size was a mouse; and the anchor
+                announced "link, open document" for something that did not open
+                the document. The filename below is, and always was, the link.
+              */}
+              {isImage ? (
+                <button
+                  type="button"
+                  style={imageButtonStyle}
+                  onClick={() => { if (url) setLightbox(url) }}
+                  aria-label={`Preview ${alt}`}
+                >
+                  <img src={url} alt={alt} style={imgStyle} loading="lazy" />
+                </button>
+              ) : (
+                <a
+                  href={`/admin/collections/${collection}/${doc.id}`}
+                  style={linkStyle}
+                >
                   <div style={fileIconStyle}>
                     <span style={{ fontSize: '1.5rem' }}>📎</span>
                     <span style={extStyle}>
                       {getExtension(filename)}
                     </span>
                   </div>
-                )}
-              </a>
+                </a>
+              )}
               <div style={captionStyle}>
                 <a
                   href={`/admin/collections/${collection}/${doc.id}`}
@@ -88,9 +99,11 @@ export const GalleryListView: React.FC<ListViewComponentProps> = ({
       {/* Lightbox */}
       {lightbox && (
         <div
+          ref={lightboxRef}
           style={lightboxOverlay}
-          onClick={() => setLightbox(null)}
+          onClick={closeLightbox}
           role="dialog"
+          aria-modal="true"
           aria-label="Image preview"
         >
           <img src={lightbox} alt="" style={lightboxImg} />
@@ -175,6 +188,16 @@ const itemStyle: React.CSSProperties = {
   border: '1px solid var(--theme-elevation-150)',
   backgroundColor: 'var(--theme-elevation-0)',
   overflow: 'hidden',
+}
+
+const imageButtonStyle: React.CSSProperties = {
+  display: 'block',
+  width: '100%',
+  padding: 0,
+  border: 'none',
+  background: 'none',
+  cursor: 'pointer',
+  font: 'inherit',
 }
 
 const linkStyle: React.CSSProperties = {

@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useAupT } from '../../utils/useTranslation.js'
+import { useDialogA11y } from '../../utils/dialogA11y.js'
 
 interface ShortcutDef {
   key: string
@@ -23,6 +24,9 @@ interface ShortcutDef {
 export const KeyboardShortcuts: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const t = useAupT()
   const [showHelp, setShowHelp] = useState(false)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const closeHelp = useCallback(() => setShowHelp(false), [])
+  useDialogA11y({ containerRef: dialogRef, open: showHelp, onClose: closeHelp })
 
   const shortcutsRef = useRef<ShortcutDef[]>([])
   shortcutsRef.current = [
@@ -85,7 +89,7 @@ export const KeyboardShortcuts: React.FC<{ children: React.ReactNode }> = ({ chi
             onClick={() => setShowHelp(false)}
             aria-hidden="true"
           />
-          <div style={dialogStyle} role="dialog" aria-label="Keyboard shortcuts">
+          <div ref={dialogRef} style={dialogStyle} role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
             <h3 style={titleStyle}>⌨ {t('shortcuts')}</h3>
             <div style={listStyle}>
               {shortcutsRef.current.map((s) => (

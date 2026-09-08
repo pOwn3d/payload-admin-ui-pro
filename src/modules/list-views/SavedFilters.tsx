@@ -65,6 +65,7 @@ export const SavedFilters: React.FC<{ collection: string }> = ({ collection }) =
           <input
             value={filterName}
             onChange={(e) => setFilterName(e.target.value)}
+            aria-label={t('filterName')}
             placeholder={t('filterName')}
             style={inputStyle}
             onKeyDown={(e) => e.key === 'Enter' && saveFilter()}

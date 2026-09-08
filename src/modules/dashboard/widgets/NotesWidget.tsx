@@ -45,6 +45,7 @@ export const NotesWidget: React.FC<{ id: string }> = () => {
       <textarea
         value={notes}
         onChange={handleChange}
+        aria-label={t('notesPlaceholder')}
         placeholder={t('notesPlaceholder')}
         style={textareaStyle}
         rows={6}

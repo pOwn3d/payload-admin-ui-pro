@@ -329,6 +329,7 @@ export function MenuEditor() {
               <input
                 ref={inputRef}
                 type="text"
+                aria-label={t('menuEditorRename')}
                 value={item.customLabel ?? item.label}
                 onChange={(e) => updateLabel(index, e.target.value)}
                 onBlur={() => setEditingIndex(null)}

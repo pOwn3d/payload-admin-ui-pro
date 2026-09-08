@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { registerListViewConfig } from './CustomListViewWrapper.js'
 import type { ViewMode } from './types.js'
+import { withAupErrorBoundary } from '../../utils/ErrorBoundary.js'
 
 interface ListViewsConfig {
   [collectionSlug: string]: {
@@ -27,7 +28,7 @@ interface ListViewsConfig {
  * Uses MutationObserver as fallback if the RSC bridge hasn't rendered yet.
  * Renders nothing visible.
  */
-export const ListViewsInitializer: React.FC = () => {
+const ListViewsInitializerInner: React.FC = () => {
   useEffect(() => {
     const readAndRegister = (): boolean => {
       const el = document.querySelector('[data-list-views-config]')
@@ -69,3 +70,7 @@ export const ListViewsInitializer: React.FC = () => {
 
   return null
 }
+
+/** Exported through the boundary: Payload mounts this straight from the
+  * import map, so the module itself is the only place a boundary fits. */
+export const ListViewsInitializer = withAupErrorBoundary(ListViewsInitializerInner, 'ListViewsInitializer')
