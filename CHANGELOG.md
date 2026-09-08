@@ -1,5 +1,180 @@
 # Changelog
 
+## [0.5.0] - 2026-09-08 — Security release
+
+Security release: every version up to and including 0.4.0 carries the flaws below, so this is not
+an optional upgrade. The recurring root cause is `!!req.user` used as an admin check — on a host
+running a second auth collection next to `admin.user` (a front-office `customers`, `members`,
+`subscribers`…), an ordinary signup was enough to reach the plugin's settings, endpoints and
+preferences. If your Payload config declares more than one auth collection, audit the settings
+global (branding, theme colours, notification rules) and your access logs on
+`/api/globals/aup-settings` and `/api/admin-ui-pro/*` before upgrading.
+
+### Security
+
+- **The `aup-settings` global was writable by an account authenticated on any auth collection.**
+  `defaultUpdateAccess` checked `req.user`, then called `resolvePermissions(req.user)` — whose
+  documented fallback grants full permissions to an authenticated principal carrying no recognised
+  role. `/api/globals/aup-settings` is a normal REST route, not an admin-panel-only one, so a
+  front-office customer who signed up through your public form could rewrite the login page
+  branding (credential phishing served from your own domain), inject custom theme CSS on every
+  admin page, and register notification webhooks pointed at their own server. Update now requires
+  membership of the collection named by `admin.user` before RBAC is consulted at all. The generous
+  fallback for an admin-collection account with an unrecognised role is unchanged.
+- **A host-provided `access.permissions` resolver was never called on the settings global.**
+  `defaultUpdateAccess` called `resolvePermissions(req.user)` without the plugin config, so the
+  README's promise that the resolver feeds the settings global was false: a host who wrote
+  `access: { permissions: (user) => ({ settings: user.role === 'owner' }) }` believed writes were
+  restricted while the resolver was skipped and the built-in role table decided. The resolver is
+  now consulted. **This can remove access that appeared to work** — see Changed.
+- **The notification webhook URL was readable by any authenticated account, on any auth
+  collection.** The `aup-settings` global is `read: () => true` by design (the login page reads its
+  branding before anyone signs in) and the `activityConfig` subtree was gated by `!!req.user`
+  alone. A Slack, Discord, Mattermost or n8n incoming-webhook URL *is* the credential: whoever
+  reads it can post into the channel it targets. The `conditionField` / `conditionEquals` values,
+  which name business fields, and the retention policy leaked with it. Reading that subtree now
+  requires the same rule as the audit trail itself (`canAccessActivityLog`: admin collection plus
+  an `admin`/`superadmin` role, with the documented fail-open for hosts declaring no role field),
+  or the `settings: edit` permission on an admin-collection account.
+- **SSRF through the notification webhook (`activity` module).** The only check on `webhookUrl` was
+  `startsWith('https://')`, and the send used a bare `fetch` that follows redirects by default. A
+  rule pointing at `https://127.0.0.1:8080/…`, `https://169.254.169.254/latest/meta-data/`, or at
+  a public URL answering `302` toward one of those, made the Node process issue a POST from inside
+  your private network — on every document change, with every error swallowed. Any account able to
+  write the settings global (before this release, per the first item, a front-office one) could arm
+  it. Webhook targets are now resolved and judged at request time by `assertSafeWebhookUrl`:
+  https only, no embedded credentials, loopback / RFC1918 / CGNAT / link-local / IPv4-mapped-IPv6
+  literals refused, DNS answers refused when any of them lands in private space, `redirect:
+  'manual'` with every hop revalidated, three redirects maximum. Deliberate internal targets are
+  declared in code via the new `activity.webhookAllowedHosts`. Stated rather than hidden: DNS
+  rebinding between the check and the connection remains possible — closing it needs a pinned-IP
+  connect that `fetch` does not expose.
+- **The presence endpoints exposed administrators' e-mail addresses and their live editing
+  activity to any authenticated account.** `GET`, `POST` and `DELETE
+  /api/admin-ui-pro/presence` checked `!!req.user` only, the key space is fully predictable
+  (`presence:<collection>:<docId>`), and the `GET` carried no rate limit at all — an enumerable
+  read of `userName`, which is the administrator's e-mail, plus who was editing which document in
+  real time. The `POST` let the same account register *itself* as an editor on any document, so its
+  e-mail appeared in the "X is editing" banner shown to administrators. All three now require the
+  admin collection, validate the key against `presence:<collection>:<id>`, and are rate limited
+  (GET 120/min, POST 30/min, DELETE 30/min).
+- **Stored CSS injection on every admin page through the custom theme colours.**
+  `theme.customAccent` was validated on its prefix only (`/^hsl\(\s*\d+/`), which judged the first
+  characters and accepted everything after them; `theme.customGreen`, `customAmber` and `customRed`
+  had no validation whatsoever. The favicon injector mounts on every admin page and
+  `generateCustomCSS` interpolated those values into a `<style>` tag, so a value able to terminate
+  its declaration could append arbitrary rules to the whole panel. Colours are now checked at input
+  (`validateCssColor`, anchored at both ends) *and* again before injection (`isSafeCssValue` in
+  `generateCustomCSS` and `generateThemeCSS`), because a value stored before this release, or
+  written through a path that skips Payload validation, never meets a field validator.
+- **CSS injection on the unauthenticated login page through `branding.loginBackground`.**
+  `validateUrl` accepted anything that merely *started* with `data:image/`, `validateBackground`
+  returned early on that branch without ever running `containsDangerousCSS`, and the three
+  `background-image: url(…)` interpolations were unquoted. The result is rendered in a `<style>` on
+  `/admin` **before authentication**, inside a `position: fixed; inset: 0` pseudo-element: a
+  crafted value could close the url token, end the declaration and add its own, giving a full-page
+  overlay over the login form (clickjacking, fake re-authentication prompt) and an outbound beacon
+  fired by every anonymous visitor of the page. Data URIs are now matched against a complete
+  anchored shape (`isSafeDataImageUri`, the single source of truth shared by the validator and by
+  `sanitizeCSS`), the dangerous-pattern check runs on **every** branch instead of the gradient one
+  only, `image-set()` joins the banned list next to `url()` (same remote-fetch capability, and it
+  was reachable from the gradient branch), url tokens are emitted double-quoted with `"` and `\`
+  escaped, and `sanitizeCSS` strips `;` from anything that is not a complete image data URI.
+- **IDOR on `dashboard-preferences`.** Access control was an id scope
+  (`{ user: { equals: req.user.id } }`) with `!!req.user` on create. Ids are per-collection
+  sequences on SQLite and Postgres, so `customers#3` and `users#3` are the same `3`: a front-office
+  account read, overwrote and deleted an administrator's saved layout, and the `unique` constraint
+  on `user` then stopped the victim from recreating it. The dashboard endpoints compounded it by
+  running their Local API calls without `req`, i.e. at the elevated `overrideAccess: true` default,
+  so the collection's rules never executed. All four operations now require the admin collection,
+  and the endpoints forward `req` with `overrideAccess: false`.
+- **CSV formula injection in the list-view export.** Cells were quoted on `,`, `"` and `\n` only —
+  none of which a formula contains. A value stored by an anonymous visitor through a public
+  collection (a contact form, a signup, a support ticket) reached the file bare, and Excel or
+  LibreOffice evaluated it in the exporting administrator's session; a `HYPERLINK` payload
+  exfiltrates neighbouring cells, that is the personal data of every other exported row. Cells
+  beginning with `=`, `+`, `-`, `@`, a tab or a carriage return are now prefixed with an apostrophe
+  (plain numbers exempted), and `\r` also forces quoting.
+- **`GET /api/admin-ui-pro/collections` disclosed the application schema to any authenticated
+  account.** Collections were filtered against the internal slugs but globals were returned whole,
+  hidden ones included — the usual opening move of an IDOR sweep on the generated `/api/<slug>`
+  routes. Globals now go through the same hidden/skip filter, and the endpoint requires the admin
+  collection.
+- **`DELETE /api/admin-ui-pro/activity/cleanup` now applies the `admin.user` collection check**,
+  closing the asymmetry documented as a known gap in 0.4.0: an account belonging to another auth
+  collection but carrying an `admin` role was refused when reading the audit trail yet could still
+  purge it. The explicit-administrator-role requirement is unchanged; the handler still deletes
+  with `overrideAccess: true`.
+
+### Fixed
+
+- **The audit trail no longer stores a foreign-collection id in its `user` relationship.** That
+  relationship points at the admin user collection, but `req.user.id` was written unconditionally:
+  a document changed by an account from another auth collection stored, say, a `customers` id in
+  it — a dangling foreign key on Postgres, and a row that renders as a completely different person
+  in the audit trail. The field is now left empty in that case; `userName` still records who acted,
+  so nothing is lost from the trail.
+- **`DELETE /api/admin-ui-pro/presence` had no rate limiter** although the README listed all ten
+  routes as rate limited. It is now capped at 30/min, matching the POST it pairs with.
+- **A theme pasted into the Theme Marketplace whose colours are refused now reports an error**
+  instead of silently blanking the `aup-theme-override` style tag and leaving the preview state
+  desynchronised from what is rendered.
+- **A theme name containing `*/` no longer escapes the CSS comment it is written into** by
+  `generateThemeCSS`. Self-inflicted and limited to the pasting user's own browser, but it handed
+  the rest of the string to the CSS parser.
+
+### Changed
+
+- **Every `/api/admin-ui-pro/*` endpoint, the `dashboard-preferences` collection and update access
+  on the `aup-settings` global now require a session on the collection named by `admin.user`.** An
+  account authenticated on another auth collection receives `403` where it used to receive `200`.
+  If you were deliberately serving the dashboard, search or presence features to a second auth
+  collection, that stops working.
+- **A notification webhook whose target resolves into private address space no longer fires.** The
+  rule stays stored and the failure is silent, as webhook failures always were. Self-hosted
+  endpoints (an internal n8n, a Mattermost on `10.0.0.5`) must be declared in the plugin config as
+  `activity.webhookAllowedHosts: ['n8n.internal']` — an exact, case-insensitive hostname match. The
+  allowlist deliberately lives in code, so editing the settings global can never widen it.
+- **Back-office accounts with an `editor`, `author`, `user` or `viewer` role lose read access to
+  the `activityConfig` subtree** of the settings global — the notification rules, their webhook URLs
+  and the retention setting. They previously read it as any authenticated principal did.
+- **`access.permissions` now decides `settings: edit` on the global.** A resolver that was written
+  but never consulted starts applying: accounts it denies lose the ability to save the settings
+  global, which they had until now.
+- **Custom theme colours must be complete colour values** (`hsl(...)`, `hsla(...)`, `rgb(...)`,
+  `oklch(...)`, `#rrggbb`…). A value already in the database is not re-judged when you save an
+  unrelated setting — Payload revalidates the whole merged document, so a strict pass over legacy
+  values would turn the global into a permanent `400` — but it is dropped at render time and the
+  colour simply does not apply. `theme.customAccent` still requires the HSL family, as before.
+- **`branding.loginBackground` is the one field where a dangerous pattern is refused even on a
+  value already stored.** If your current value contains `url(`, `image-set(`, `@import`,
+  `expression(` or `javascript:`, the settings global will refuse to save until that field is
+  fixed. This is deliberate: the value renders on the anonymous login page, and grandfathering it
+  would keep the hole open.
+- **Presence keys must match `presence:<collection>:<id>`** (collection segment up to 64
+  characters, id up to 64, `A-Za-z0-9_.-`). The built-in indicator already produces that shape; a
+  custom caller using another key gets `{ editors: [] }` on read and `400` on write.
+- **CSV exports change shape.** Cells that used to start with `=`, `+`, `-`, `@`, a tab or a
+  carriage return now carry a leading apostrophe. Plain numbers such as `-12.5` are exempt, so
+  numeric columns still sum, but any downstream parser reading these files should be checked.
+- **GitHub Actions are pinned by commit SHA in every workflow, the publish one included** — that
+  workflow is the path the npm artifact travels, so a moved tag on a third-party action was a
+  supply-chain hole in the released package.
+
+### Added
+
+- **`activity.webhookAllowedHosts?: string[]`** — hostnames accepted as notification-webhook
+  targets even though they resolve into private address space. Honoured by both the field validator
+  and the runtime guard, so a legitimate internal endpoint no longer has to choose between being
+  refused at input and being blocked at send time.
+- **`.github/workflows/security.yml`** — dependency audit (`pnpm audit --audit-level high`),
+  gitleaks secret scan over the full history, and CodeQL with `security-extended`, on push, on pull
+  request and weekly, so an advisory published after a merge still surfaces before the next
+  release.
+- **`.github/dependabot.yml`** — weekly npm updates and monthly action updates, with major bumps of
+  `payload`, `react`, `react-dom` and `next` excluded: those ranges are the package's public
+  contract and widening them is a semver decision, not an automated one.
+
 ## [0.4.0] - 2026-09-07 — Access control on the audit trail, and an install contract that matches reality
 
 ### Breaking

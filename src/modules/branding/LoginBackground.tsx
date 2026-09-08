@@ -3,6 +3,24 @@
 import React, { useEffect, useState } from 'react'
 import { fetchSettings } from '../../utils/settingsCache.js'
 import { getThemeById } from '../../utils/themeApplier.js'
+import { isSafeDataImageUri } from '../../utils/security.js'
+
+/**
+ * Quote a value for a CSS `url()`.
+ *
+ * The three call sites below emitted `url(${bg})` UNQUOTED. An unquoted CSS url
+ * token cannot contain whitespace, quotes or parentheses at all, which is why
+ * the validator had to refuse the `'`, spaces and `(` that real SVG data URIs
+ * carry — and refusing them broke every host whose logo came out of a standard
+ * SVG-to-data-URI encoder.
+ *
+ * Quoting moves the constraint to where it belongs: inside a double-quoted url
+ * token only `"` and `\` can break out, and both are escaped here. Newlines are
+ * dropped because a raw one terminates the token whatever the quoting.
+ */
+function cssUrlToken(value: string): string {
+  return value.replace(/[\\"]/g, '\\$&').replace(/[\r\n\f]/g, '')
+}
 
 /** Inline error boundary — catches crashes without taking down the app */
 class SafeBoundary extends React.Component<
@@ -194,7 +212,7 @@ const LoginBackgroundInner: React.FC<{ children?: React.ReactNode }> = ({ childr
             inset: 0 !important;
             z-index: 0 !important;
             ${isGrad ? `background: ${bg} !important;` : `
-              background-image: url(${bg}) !important;
+              background-image: url("${cssUrlToken(bg)}") !important;
               background-size: cover !important;
               background-position: center !important;
             `}
@@ -294,7 +312,7 @@ const LoginBackgroundInner: React.FC<{ children?: React.ReactNode }> = ({ childr
             min-height: 100dvh !important;
             ${isGrad ? `background: ${bg} !important;` : `
               background-color: #0f0f15 !important;
-              background-image: url(${bg}) !important;
+              background-image: url("${cssUrlToken(bg)}") !important;
               background-size: cover !important;
               background-position: center !important;
             `}
@@ -320,7 +338,7 @@ const LoginBackgroundInner: React.FC<{ children?: React.ReactNode }> = ({ childr
             width: 50% !important;
             z-index: 0 !important;
             ${isGrad ? `background: ${bg} !important;` : `
-              background-image: url(${bg}) !important;
+              background-image: url("${cssUrlToken(bg)}") !important;
               background-size: cover !important;
               background-position: center !important;
             `}
@@ -350,15 +368,40 @@ function isGradient(value: string): boolean {
   return /^(linear|radial|conic|repeating-)/i.test(value)
 }
 
-/** Sanitize CSS value to prevent injection via closing braces or script tags */
-function sanitizeCSS(value: string): string {
-  return value
+/**
+ * Sanitize CSS value to prevent injection via closing braces or script tags.
+ *
+ * `branding.loginBackground` is the last value of its family still validated by
+ * the lenient `validateBackground` (a leading `/` short-circuits it), and it is
+ * interpolated into a `<style>` rendered on the UNAUTHENTICATED login page. The
+ * brace stripping below is what stops a selector breakout; `;` is stripped for
+ * the same reason one step down — without it a value can close the
+ * `background:` declaration and append its own, which is how a full-page
+ * credential-phishing overlay gets in.
+ *
+ * A data image URI keeps its semicolons: `data:image/svg+xml;base64,…` is a
+ * legitimate background and stripping the `;base64,` separator would simply
+ * corrupt it.
+ *
+ * That exemption is granted by `isSafeDataImageUri` — the SAME predicate
+ * `validateUrl` uses — and not, as it was, by a `startsWith('data:')` prefix
+ * test. The prefix test was the hole: two sources of truth for "is this a data
+ * image URI", one shape-checked and one not, so
+ * `data:image/gif,a)!important;…` satisfied the render-side answer and came
+ * through with every `;` intact. Anything that is not the complete, inert shape
+ * loses its semicolons like any other value, and therefore cannot end the
+ * declaration it is interpolated into.
+ */
+export function sanitizeCSS(value: string): string {
+  const out = value
     .replace(/[{}]/g, '') // Remove braces that could break out of CSS rules
     .replace(/<\/?script/gi, '') // Remove script tags
     .replace(/<\/?style/gi, '') // Remove style tags
     .replace(/expression\s*\(/gi, '') // Remove IE expression()
     .replace(/javascript\s*:/gi, '') // Remove javascript: protocol
     .replace(/@import/gi, '') // Remove CSS imports
+
+  return isSafeDataImageUri(out) ? out : out.replace(/;/g, '')
 }
 
 

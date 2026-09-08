@@ -1,6 +1,22 @@
 'use client'
 
 import { THEME_PRESETS, type ThemePreset } from '../styles/theme-presets.js'
+import { isSafeCssValue } from './security.js'
+
+/**
+ * Runtime net for every value interpolated into the injected <style> tag.
+ *
+ * Field validation only covers what goes through Payload; a theme pasted into
+ * ThemeMarketplace, or a row written before the validator existed, never meets
+ * it. `containsDangerousCSS` already existed for exactly this and was called
+ * from nowhere on this path.
+ *
+ * Returns the value when it is inert, `null` otherwise — callers drop the
+ * declaration instead of shipping an escape sequence into the sheet.
+ */
+function safeCss(value: string | null | undefined): string | null {
+  return isSafeCssValue(value) ? value : null
+}
 
 /**
  * Get a theme preset by ID. Returns null if not found.
@@ -14,12 +30,27 @@ export function getThemeById(id: string): ThemePreset | null {
  * Replaces the --aup-* variables with the theme's colors.
  */
 export function generateThemeCSS(theme: ThemePreset): string {
-  const c = theme.colors
-  const d = theme.dark
-  const l = theme.login
+  const rawC = theme?.colors
+  const rawD = theme?.dark
+  if (!rawC || !rawD) return ''
+
+  // ThemeMarketplace feeds this function arbitrary pasted JSON. One tampered
+  // value is enough to escape the declaration and restyle the whole panel, so
+  // the theme is taken as a whole or not at all.
+  const values = [...Object.values(rawC), ...Object.values(rawD)]
+  if (!values.every((v) => isSafeCssValue(v))) return ''
+
+  const c = rawC
+  const d = rawD
+
+  // The colours are checked, the NAME was not — and it is interpolated into a
+  // CSS comment. A `*/` inside a theme pasted into ThemeMarketplace closes the
+  // comment early and hands the rest of the string to the parser. Reach is
+  // limited (self-inflicted, own browser), the fix is one substitution.
+  const name = String(theme.name ?? '').replace(/[*/<]/g, '')
 
   return `
-/* Theme: ${theme.name} — auto-generated */
+/* Theme: ${name} — auto-generated */
 :root,
 [data-theme="light"] {
   --aup-accent: ${c.accent} !important;
@@ -76,8 +107,16 @@ button[role="switch"][aria-checked="true"] {
 /**
  * Generate CSS for custom colors (when preset = 'custom').
  */
-export function generateCustomCSS(accent: string, green?: string, amber?: string, red?: string): string {
+export function generateCustomCSS(accentInput: string, greenInput?: string, amberInput?: string, redInput?: string): string {
+  // `theme.customAccent` used to be validated on its prefix alone, so
+  // `hsl(1) } html { … } .x{` landed here and was interpolated verbatim into a
+  // <style> tag present on every admin page. An unsafe accent kills the whole
+  // custom theme; an unsafe secondary colour is simply dropped.
+  const accent = safeCss(accentInput)
   if (!accent) return ''
+  const green = safeCss(greenInput)
+  const amber = safeCss(amberInput)
+  const red = safeCss(redInput)
 
   // Generate subtle/border versions from the accent
   const subtle = accent.replace(')', ' / 0.12)')

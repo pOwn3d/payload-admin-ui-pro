@@ -121,3 +121,33 @@ describe('containsDangerousCSS', () => {
     expect(containsDangerousCSS(':root { --my-color: #333; }')).toBe(false)
   })
 })
+
+// Regression: `validateUrl` accepted anything that merely STARTED with
+// `data:image/`, and `validateBackground` returned early on that branch without
+// ever running containsDangerousCSS. Since the value is interpolated into CSS,
+// that prefix was enough to close the declaration and open another rule.
+describe('validateBackground — le prefixe data: ne contourne plus le filtre', () => {
+  it('refuse une data URI qui rouvre le contexte CSS', () => {
+    expect(
+      validateBackground('data:image/png;base64,AAAA"); } html { background: url("https://evil.tld/x'),
+    ).not.toBe(true)
+  })
+
+  it('refuse une data URI porteuse d un @import', () => {
+    expect(validateBackground('data:image/png,@import url(https://evil.tld/x.css)')).not.toBe(true)
+  })
+
+  it('accepte une data URI d image bien formee', () => {
+    expect(validateBackground('data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==')).toBe(true)
+  })
+
+  it('refuse un type non image', () => {
+    expect(validateUrl('data:text/html;base64,PHNjcmlwdD4=')).not.toBe(true)
+  })
+
+  it('laisse passer les valeurs legitimes', () => {
+    expect(validateBackground('https://cdn.example.com/bg.jpg')).toBe(true)
+    expect(validateBackground('/media/bg.jpg')).toBe(true)
+    expect(validateBackground('linear-gradient(135deg, #667eea 0%, #764ba2 100%)')).toBe(true)
+  })
+})

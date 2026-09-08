@@ -7,10 +7,14 @@
  * - in-app: Already handled by NotificationBell (activity log = in-app feed)
  *
  * Security:
- * - Webhook URLs are validated at config time (Payload field validation)
+ * - Webhook URLs are validated at config time (Payload field validation) AND
+ *   re-validated at request time by `assertSafeWebhookUrl`, on every redirect
+ *   hop — a field validator only sees writes that go through Payload, and it
+ *   cannot see where a hostname RESOLVES
  * - Payloads never include field values — only action metadata
  * - Failures are silently swallowed to never block hooks
  */
+import { safeWebhookFetch, type WebhookFetchOptions } from '../../utils/ssrf.js'
 
 export interface NotificationRule {
   id: string
@@ -45,6 +49,7 @@ export function executeNotificationRules(
   rules: NotificationRule[],
   event: NotificationEvent,
   doc?: Record<string, unknown>,
+  webhookOptions?: WebhookFetchOptions,
 ): void {
   if (!rules || rules.length === 0) return
 
@@ -55,7 +60,7 @@ export function executeNotificationRules(
       switch (rule.channel) {
         case 'webhook':
           if (rule.webhookUrl) {
-            fireWebhook(rule.webhookUrl, event).catch(() => {
+            fireWebhook(rule.webhookUrl, event, webhookOptions).catch(() => {
               // Silently swallow — fire-and-forget
             })
           }
@@ -98,15 +103,22 @@ function matchesRule(
 
 /**
  * Send a webhook POST with a 5s timeout.
- * Uses AbortController for clean timeout handling.
+ *
+ * The bare `fetch(url, …)` this replaced followed redirects by default and
+ * never looked at the destination, so a rule pointing at `https://127.0.0.1:…`
+ * or at a public URL redirecting to `http://169.254.169.254/…` turned every
+ * document change into a request issued from inside the host's network.
+ * `safeWebhookFetch` resolves the host and refuses private address space,
+ * re-checking after each redirect.
  */
-async function fireWebhook(url: string, event: NotificationEvent): Promise<void> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS)
-
-  try {
-    await fetch(url, {
-      method: 'POST',
+async function fireWebhook(
+  url: string,
+  event: NotificationEvent,
+  options?: WebhookFetchOptions,
+): Promise<void> {
+  await safeWebhookFetch(
+    url,
+    {
       headers: {
         'Content-Type': 'application/json',
         'User-Agent': 'PayloadAdminUiPro/1.0',
@@ -120,9 +132,7 @@ async function fireWebhook(url: string, event: NotificationEvent): Promise<void>
         userName: event.userName,
         timestamp: event.timestamp,
       }),
-      signal: controller.signal,
-    })
-  } finally {
-    clearTimeout(timer)
-  }
+    },
+    { ...options, timeoutMs: options?.timeoutMs ?? WEBHOOK_TIMEOUT_MS },
+  )
 }

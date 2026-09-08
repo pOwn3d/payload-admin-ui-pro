@@ -1,6 +1,7 @@
 import type { Endpoint } from 'payload'
 import { VALIDATION_LIMITS } from '../../types.js'
 import { rateLimit, rateLimitKey, rateLimitResponse } from '../../utils/security.js'
+import { isAdminCollectionUser } from '../../utils/userCollection.js'
 import type { DashboardLayout, WidgetInstance } from './types.js'
 
 /**
@@ -11,11 +12,26 @@ import type { DashboardLayout, WidgetInstance } from './types.js'
  * DELETE /api/admin-ui-pro/dashboard — reset to default
  *
  * Security:
- * - All endpoints require authentication (req.user)
+ * - All endpoints require a session on the ADMIN user collection. Every one of
+ *   them used to check `!!req.user`, which a front-office account satisfies —
+ *   and since ids are per-collection sequences on SQLite and Postgres,
+ *   `customers#3` and `users#3` collide, so `where: { user: { equals: id } }`
+ *   handed a customer the administrator's row to read, overwrite and delete.
+ * - Reads and writes forward `req` with `overrideAccess: false`, so the
+ *   collection's own access rules are the source of truth rather than a raw id
+ *   comparison run under the elevated Local API default.
  * - User ID extracted from JWT (req.user.id), never from URL params
  * - Rate limited per user
  * - Layout payload strictly validated (max widgets, valid sizes, no injection)
  */
+
+function forbidden() {
+  return new Response(JSON.stringify({ error: 'Forbidden' }), {
+    status: 403,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
 export function createDashboardEndpoints(
   collectionSlug: string = 'dashboard-preferences',
 ): Endpoint[] {
@@ -28,6 +44,7 @@ export function createDashboardEndpoints(
         if (!req.user) {
           return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
         }
+        if (!isAdminCollectionUser(req as never)) return forbidden()
 
         const key = `collections:${req.user.id}`
         if (!rateLimit(key, 300)) return rateLimitResponse()
@@ -63,7 +80,15 @@ export function createDashboardEndpoints(
               hasUpload: !!col.upload,
             }))
 
+          // Globals used to be returned WHOLE while collections were filtered —
+          // the filter is cosmetic, but the schema dump it produced is the
+          // opening move of an IDOR sweep on the generated REST routes.
           const globals = req.payload.config.globals
+            .filter((g: any) => {
+              if (g.admin?.hidden) return false
+              if (SKIP_SLUGS.has(g.slug)) return false
+              return !SKIP_PREFIXES.some((p: string) => g.slug.startsWith(p))
+            })
             .map((g: any) => ({
               slug: g.slug,
               label: typeof g.label === 'string' ? g.label : g.slug.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
@@ -90,6 +115,7 @@ export function createDashboardEndpoints(
         if (!req.user) {
           return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
         }
+        if (!isAdminCollectionUser(req as never)) return forbidden()
 
         const key = `dash-get:${req.user.id}`
         if (!rateLimit(key, 60)) return rateLimitResponse()
@@ -100,6 +126,11 @@ export function createDashboardEndpoints(
             where: { user: { equals: req.user.id } },
             limit: 1,
             depth: 0,
+            // Without `req`, the Local API runs at overrideAccess: true and the
+            // collection's access rules never execute — the only filter left
+            // being an id comparison blind to the caller's collection.
+            req,
+            overrideAccess: false,
           })
 
           const prefs = result.docs[0]
@@ -127,6 +158,7 @@ export function createDashboardEndpoints(
         if (!req.user) {
           return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
         }
+        if (!isAdminCollectionUser(req as never)) return forbidden()
 
         const key = `dash-patch:${req.user.id}`
         if (!rateLimit(key, 30)) return rateLimitResponse()
@@ -169,6 +201,8 @@ export function createDashboardEndpoints(
             where: { user: { equals: req.user.id } },
             limit: 1,
             depth: 0,
+            req,
+            overrideAccess: false,
           })
 
           if (existing.docs[0]) {
@@ -176,6 +210,8 @@ export function createDashboardEndpoints(
               collection: collectionSlug,
               id: existing.docs[0].id,
               data: { layout, version: layout.version ?? 1 },
+              req,
+              overrideAccess: false,
             })
           } else {
             await req.payload.create({
@@ -185,6 +221,8 @@ export function createDashboardEndpoints(
                 layout,
                 version: layout.version ?? 1,
               },
+              req,
+              overrideAccess: false,
             })
           }
 
@@ -209,6 +247,7 @@ export function createDashboardEndpoints(
         if (!req.user) {
           return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
         }
+        if (!isAdminCollectionUser(req as never)) return forbidden()
 
         const key = `search:${req.user.id}`
         if (!rateLimit(key, 30)) return rateLimitResponse()
@@ -321,6 +360,7 @@ export function createDashboardEndpoints(
         if (!req.user) {
           return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
         }
+        if (!isAdminCollectionUser(req as never)) return forbidden()
 
         const key = `dash-del:${req.user.id}`
         if (!rateLimit(key, 10)) return rateLimitResponse()
@@ -331,12 +371,16 @@ export function createDashboardEndpoints(
             where: { user: { equals: req.user.id } },
             limit: 1,
             depth: 0,
+            req,
+            overrideAccess: false,
           })
 
           if (existing.docs[0]) {
             await req.payload.delete({
               collection: collectionSlug,
               id: existing.docs[0].id,
+              req,
+              overrideAccess: false,
             })
           }
 
