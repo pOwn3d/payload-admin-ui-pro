@@ -135,6 +135,7 @@ export default defineConfig([
       'src/utils/collectionsCache.ts',
       'src/utils/settingsCache.ts',
       'src/utils/security.ts',
+      'src/utils/validationLimits.ts',
     ],
     onSuccess: async () => {
       const { readdirSync, readFileSync, writeFileSync, statSync } = await import('fs')

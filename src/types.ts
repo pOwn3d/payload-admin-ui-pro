@@ -370,11 +370,8 @@ export type { WidgetDefinition } from './modules/dashboard/widgetRegistry.js'
 export type { AupPermissions, PermissionLevel, AupModule, PermissionsCallback } from './utils/rbac.js'
 
 /** Max sizes for preference payloads */
-export const VALIDATION_LIMITS = {
-  maxWidgets: 20,
-  maxWidgetTitleLength: 100,
-  maxLayoutSize: 50_000,
-  maxUrlLength: 2048,
-  maxCssLength: 50_000,
-  maxTextFieldLength: 500,
-} as const
+// Defined in `utils/validationLimits.ts`, not here: `utils/security.ts` imports
+// it as a value and is emitted by the unbundled tsup pass, which needs the
+// target to be a real file in `dist/`. Re-exported so the public API is
+// unchanged. See that module for the full story.
+export { VALIDATION_LIMITS } from './utils/validationLimits.js'

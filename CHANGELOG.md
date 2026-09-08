@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.7.1] - 2026-09-08
+
+Fixes a packaging defect that made 0.5.0, 0.6.0 and 0.7.0 unusable: a host
+application could not build against them. If you are on any of those three,
+this is the version to take — and it is the one that finally makes the 0.6.0
+security fix applicable.
+
+### Fixed
+
+- **`dist/utils/security.js` imported `../types.js`, which was never emitted.**
+  That file is produced by the unbundled tsup pass, which preserves relative
+  imports verbatim, and `types.ts` is not one of that pass's entries — it only
+  exists inlined inside `dist/index.js`. The host's bundler therefore failed to
+  resolve it, on any install that mounts the branding module (the import trace
+  runs through `LoginBackground`, which the import map pulls in):
+  `Module not found: Can't resolve '../types.js'`.
+
+  What hid it: every other importer of that module uses `import type`, which
+  TypeScript erases, leaving nothing in the emitted file. `security.ts` was the
+  only one importing a runtime value. Nothing in our toolchain could see it —
+  `tsc` and vitest both read `src/`, where the module exists, and tsup has no
+  reason to object. It surfaced in someone else's build, after publication.
+
+  `VALIDATION_LIMITS` now lives in `src/utils/validationLimits.ts`, listed in
+  that pass's entries. `types.ts` re-exports it, so the public API is unchanged.
+
+### Added
+
+- `scripts/verify-dist-imports.mjs`, wired into `pnpm build`. It walks every
+  emitted `.js`/`.cjs`/`.mjs`, extracts the relative imports and fails the build
+  when one points at a file that is not there. Run across the seven plugins it
+  returned exactly two hits: this one and its twin in `payload-support`.
+
 ## [0.7.0] - 2026-09-08 — Controls that say what they are, a boundary that holds, and a log that forgets
 
 Not a security release. Nothing here closes a vulnerability, and if you are still below 0.6.0 that

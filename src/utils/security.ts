@@ -1,4 +1,4 @@
-import { VALIDATION_LIMITS } from '../types.js'
+import { VALIDATION_LIMITS } from './validationLimits.js'
 
 /**
  * Validate a URL: must be relative (/) or HTTPS.
