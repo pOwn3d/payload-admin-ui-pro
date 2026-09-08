@@ -1,6 +1,6 @@
 {
   "name": "@consilioweb/payload-admin-ui-pro",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "packageManager": "pnpm@11.25.0",
   "description": "Payload CMS 3 plugin — professional admin UI with 8 themes, dashboard builder, calendar/kanban/gallery views, command palette, notifications, keyboard shortcuts, collaboration presence, field enhancements, and activity audit trail",
   "type": "module",
@@ -77,8 +77,8 @@
   "author": "ConsilioWEB <contact@consilioweb.fr> (https://consilioweb.fr)",
   "license": "MIT",
   "peerDependencies": {
-    "@payloadcms/ui": "^3.0.0",
-    "payload": "^3.0.0",
+    "@payloadcms/ui": "^3.79.1",
+    "payload": "^3.79.1",
     "react": "^18.0.0 || ^19.0.0"
   },
   "engines": {

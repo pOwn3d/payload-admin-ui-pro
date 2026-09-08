@@ -414,6 +414,30 @@ export function rateLimit(key: string, maxRequests: number, windowMs: number = 6
 }
 
 /**
+ * Per-caller rate limit key.
+ *
+ * The collection segment is not decoration. Ids are per-collection sequences on
+ * SQLite and Postgres, so `users#3` and `customers#3` are the same `3`: a key
+ * built on the bare id puts two accounts of two different auth collections in
+ * ONE bucket, and the front-office one — which never gets any data back — can
+ * still spend the administrator's tokens and answer him 429. The endpoints do
+ * refuse the foreign collection before counting, but `isAdminCollectionUser`
+ * stays open when `config.admin.user` is empty (hand-rolled or not-yet
+ * sanitized configs), and a bucket shared between two identities is not a
+ * property that should depend on a guard placed one line above.
+ *
+ * Not to be confused with `rateLimitKey` below, which adds the client IP: an
+ * IP dimension makes a limit easier to escape (rotate the address), so it is
+ * reserved for the unauthenticated surfaces.
+ */
+export function userRateLimitKey(
+  prefix: string,
+  user: { collection?: string; id?: number | string } | null | undefined,
+): string {
+  return `${prefix}:${user?.collection ?? 'unknown'}:${user?.id ?? 'anon'}`
+}
+
+/**
  * Extract rate limit key from request.
  * Uses IP + user ID for per-user per-IP limiting.
  */

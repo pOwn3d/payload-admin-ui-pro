@@ -1,6 +1,6 @@
 import type { Endpoint } from 'payload'
 import { VALIDATION_LIMITS } from '../../types.js'
-import { rateLimit, rateLimitKey, rateLimitResponse } from '../../utils/security.js'
+import { rateLimit, rateLimitResponse, userRateLimitKey } from '../../utils/security.js'
 import { isAdminCollectionUser } from '../../utils/userCollection.js'
 import type { DashboardLayout, WidgetInstance } from './types.js'
 
@@ -46,7 +46,7 @@ export function createDashboardEndpoints(
         }
         if (!isAdminCollectionUser(req as never)) return forbidden()
 
-        const key = `collections:${req.user.id}`
+        const key = userRateLimitKey('collections', req.user)
         if (!rateLimit(key, 300)) return rateLimitResponse()
 
         try {
@@ -117,7 +117,7 @@ export function createDashboardEndpoints(
         }
         if (!isAdminCollectionUser(req as never)) return forbidden()
 
-        const key = `dash-get:${req.user.id}`
+        const key = userRateLimitKey('dash-get', req.user)
         if (!rateLimit(key, 60)) return rateLimitResponse()
 
         try {
@@ -160,7 +160,7 @@ export function createDashboardEndpoints(
         }
         if (!isAdminCollectionUser(req as never)) return forbidden()
 
-        const key = `dash-patch:${req.user.id}`
+        const key = userRateLimitKey('dash-patch', req.user)
         if (!rateLimit(key, 30)) return rateLimitResponse()
 
         let body: unknown
@@ -249,7 +249,7 @@ export function createDashboardEndpoints(
         }
         if (!isAdminCollectionUser(req as never)) return forbidden()
 
-        const key = `search:${req.user.id}`
+        const key = userRateLimitKey('search', req.user)
         if (!rateLimit(key, 30)) return rateLimitResponse()
 
         const url = new URL(req.url, 'http://localhost')
@@ -362,7 +362,7 @@ export function createDashboardEndpoints(
         }
         if (!isAdminCollectionUser(req as never)) return forbidden()
 
-        const key = `dash-del:${req.user.id}`
+        const key = userRateLimitKey('dash-del', req.user)
         if (!rateLimit(key, 10)) return rateLimitResponse()
 
         try {

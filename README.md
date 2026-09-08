@@ -352,6 +352,11 @@ collection named by `admin.user`** — an account authenticated on another auth 
 front-office `customers`, `members`…) gets a `403`, not a `200`. All ten are rate limited per user,
 per the quotas below.
 
+The limiter runs **after** the access decision, never before, and its counter is keyed on the
+caller's collection *and* id. Both halves matter: a caller who is refused must not be able to spend
+a bucket, and ids are per-collection sequences on SQLite and Postgres, so a key built on the bare id
+would put `users#3` and `customers#3` in one bucket.
+
 | Method | Path | Access | Rate limit | Purpose |
 |--------|------|--------|------------|---------|
 | `GET` | `/api/admin-ui-pro/collections` | Admin collection | 300/min | Lists non-internal collections and globals for the palette and the widgets. |
@@ -379,7 +384,7 @@ across replicas.
 | Slug | Role | Read | Write |
 |------|------|------|-------|
 | `activity-log` | Audit trail entries. Hidden from the nav. | Members of the `admin.user` collection holding an `admin`/`superadmin` role (case-insensitive, plain strings or `{ value }` entries). Hosts that declare no role field at all keep access. | Create and update are refused for everyone — entries are written by internal hooks and are immutable. Delete follows the same rule as read. |
-| `dashboard-preferences` | One widget layout per user. Hidden from the nav. | Own row, and only for members of the `admin.user` collection — ids are per-collection sequences, so an id scope alone does not separate `users#3` from `customers#3`. | Update and delete: same rule. Create: members of the `admin.user` collection — what keeps it to one row each is the `unique` constraint on `user`, not the access rule. |
+| `dashboard-preferences` | One widget layout per user. Hidden from the nav. | Own row, and only for members of the `admin.user` collection — ids are per-collection sequences, so an id scope alone does not separate `users#3` from `customers#3`. | Update and delete: same rule. Create: members of the `admin.user` collection, **and only for their own row** — the posted `user` must be the caller. The `user` field also refuses to be rewritten afterwards, so a row cannot change hands; `unique` on `user` is what keeps it to one row each. |
 | `aup-settings` (global) | All admin-panel settings. Appears under **Settings**. | Public — the login page reads its branding before anyone signs in — **except** the `activityConfig` group, restricted to the `admin.user` collection because it carries webhook URLs, which are bearer credentials. | Members of the `admin.user` collection, then `access.settings` or the RBAC `settings: edit` permission. |
 
 Both collection slugs are fixed. The `user` relationship on each points at the collection resolved
@@ -398,9 +403,19 @@ from `userCollectionSlug`.
 | Dependency | Version | Peer |
 |------------|---------|------|
 | Node.js | `^18.20.2 \|\| >=20.9.0` | engines |
-| Payload CMS | `^3.0.0` | required |
-| `@payloadcms/ui` | `^3.0.0` | required — the field-enhance components import `useField` |
+| Payload CMS | `^3.79.1` | required |
+| `@payloadcms/ui` | `^3.79.1` | required — the field-enhance components import `useField` |
 | React | `^18.0.0 \|\| ^19.0.0` | required |
+
+The floor is `3.79.1` and not `3.0.0` for two reasons. Payload releases before `3.79.1` carry a
+pre-authentication account takeover (GHSA-hp5w-3hxx-vmwf) and an SQL injection: a plugin range of
+`^3.0.0` invited a host to install one and satisfy npm. And the plugin would not have worked there
+anyway — it types its dashboard view with `AdminViewServerProps`, which Payload added in `3.24.0`,
+and mounts the document timeline and the presence indicator in
+`admin.components.edit.beforeDocumentControls`, a slot that did not exist before `3.36.0` (on an
+older host those two features render nowhere, silently). Nothing in the package needs anything
+newer than that, so the range stays open to the whole `3.x` line above the floor; development and
+CI run on `3.88`.
 
 Next.js is not a peer dependency: the package never imports it. The React range you can actually
 use is the one your `@payloadcms/ui` version allows — recent releases require React 19.

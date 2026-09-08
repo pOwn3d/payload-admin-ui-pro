@@ -1,5 +1,103 @@
 # Changelog
 
+## [0.6.0] - 2026-09-08 — Ownership on the dashboard preferences, and a peer floor that means something
+
+Fourth audit pass, actor by actor. Both flaws below are in every release published so far, 0.5.0 —
+a few hours old — included. The first needs nothing more than an ordinary back-office account, no
+role, and writes a row that another administrator's browser then renders; the second needs a second
+auth collection and blinds the audit trail rather than reading it. Neither is reachable without an
+account: if your panel has one user and your config one auth collection, this is a routine upgrade.
+
+### Security
+
+- **`create` on `dashboard-preferences` was never bound to the row it creates.** `read`, `update`
+  and `delete` return a where-clause, so Payload scopes them to the caller's own row; `create` has
+  no row to filter against and returned a bare `true` once membership of the `admin.user`
+  collection was established, so Payload wrote whatever `user` the body carried.
+  `POST /api/dashboard-preferences` is an ordinary REST route — `admin.hidden` takes the collection
+  out of the nav, it does not close the API — so **any** account of the admin collection, with no
+  role required (`editor`, `author`, `viewer`), could write the preferences row of an administrator
+  who had none yet. `layout` is a bare `json` field: `validateLayout` lives in the plugin's own
+  `PATCH /api/admin-ui-pro/dashboard` handler and the REST route does not replay it, so a layout
+  planted this way escapes every check that handler applies — the widget-count cap, the lowercase
+  widget-slug shape, and the `x`/`y`/`w`/`h` ranges. `unique: true` on `user` means there is exactly
+  one such row per user, so the row that is planted *is* the one the victim's dashboard reads and
+  renders at his next visit. A second door reached the same result on a row that already existed:
+  `update` is a where-clause judged against the **stored** document, so it never sees the incoming
+  value, and PATCHing your own row with `{"user": <another id>}` handed the row to that user.
+  `create` now compares the posted `user` against the session — on the id alone and stringified,
+  because `req.user.id` is a number on SQLite/Postgres and a string on Mongo while a JSON body may
+  send either — and the `user` field is no longer writable on update, which closes the second door.
+  **What to check:** the collection holds one row per user and nothing else, so list it. A row whose
+  `layout` you cannot account for — a widget slug you do not recognise, a coordinate outside the
+  grid — was not written by the account it names. Deleting it costs its owner nothing but a
+  re-arranged dashboard: the view falls back to its default layout and his next save writes a fresh
+  row.
+
+- **The audit-trail read spent its rate-limit token before deciding whether the caller was entitled
+  to anything.** `GET /api/admin-ui-pro/activity` checked `req.user`, incremented a counter keyed
+  `activity-get:<id>`, and only then ran the `find` whose `overrideAccess: false` produced the
+  `403`. Ids are per-collection sequences on SQLite and Postgres, so `customers#7` and `users#7` are
+  the same `7`: an account on a **second auth collection** (a front-office `customers`, `members`,
+  `subscribers`) never read a single log entry and still emptied the bucket of the administrator
+  carrying that id, at 60 requests a minute. That route is the only one feeding the notification
+  bell, the activity feed, the document timeline and the Activity Analytics widget, and all four
+  render empty on a failed fetch — so the administrator's whole audit surface simply looked quiet.
+  The handler now applies `canAccessActivityLog`, the collection's own read rule imported rather
+  than restated so the two cannot drift, before it touches the counter; it refuses nobody the `find`
+  would have refused, with the same `403` and without reaching the data layer. **What to check:** if
+  an administrator has reported an empty notification bell or a blank activity feed while the log
+  was filling normally, that is the shape this bug had. Nothing is lost — the entries were written,
+  only the reads were denied.
+
+### Breaking
+
+- **`payload` and `@payloadcms/ui` peer ranges raised from `^3.0.0` to `^3.79.1`.** Payload releases
+  below `3.79.1` carry a pre-authentication account takeover (GHSA-hp5w-3hxx-vmwf) and an SQL
+  injection, and a plugin advertising `^3.0.0` told npm that installing one of them next to this
+  package was fine. **Check the Payload version actually installed, not the range in your
+  `package.json`** (`npm ls payload` / `pnpm why payload`): the advisory is in the dependency, so
+  upgrading this plugin without upgrading Payload fixes nothing. The second reason is that `^3.0.0`
+  was never true in the first place — the dashboard view is typed with `AdminViewServerProps`, which
+  Payload added in `3.24.0`, and the document timeline and the presence indicator mount in
+  `admin.components.edit.beforeDocumentControls`, a slot that did not exist before `3.36.0`; on an
+  older host those two features rendered nowhere and said nothing about it. Nothing in the package
+  needs anything newer than the floor, so the range stays open across the rest of the `3.x` line;
+  development and CI run on `3.88`.
+- **`POST /api/dashboard-preferences` carrying a `user` other than the caller now returns `403`.**
+  Membership of the admin collection used to be the whole rule. If you seed dashboard layouts for
+  your team from a script or a migration, that write no longer passes as one of your administrators
+  — run it through the Local API with `overrideAccess: true`, which is what a seeding path should
+  have been doing anyway.
+- **The `user` relationship on `dashboard-preferences` is no longer writable on update.** A row
+  cannot change hands. The field is dropped from incoming data and Payload falls back to the stored
+  value, so rows already in your database stay updatable and the plugin's own save path — which
+  sends `layout` and `version` only — is untouched.
+
+### Changed
+
+- **Per-caller rate-limit keys now carry the caller's auth collection as well as the id**, on all
+  ten `/api/admin-ui-pro/*` routes. On the nine routes other than the activity read,
+  `isAdminCollectionUser` already refused a foreign collection before the counter, so this is
+  defence in depth — with one real exception: that guard deliberately fails open when
+  `config.admin.user` is empty, which is the case for hand-rolled configs and for configs Payload
+  has not sanitized yet. On such a host two accounts numbering from `1` in two collections genuinely
+  shared one bucket. Whether two identities share a rate-limit bucket should not depend on a guard
+  placed one line above it. The helper is internal; no exported API changes.
+
+### Added
+
+- **Nine regression tests** for both flaws, in `src/__tests__/fourthPassRegressions.test.ts` —
+  including the two assertions that matter most after a fix of this shape: that the limiter still
+  holds the administrator it exists to hold, and that the plugin's own dashboard-save path still
+  passes the access rule it is now judged by. The suite goes from 193 to 202 tests over 14 files.
+
+### Documentation
+
+- The README compatibility table carries the real floor and the reasons for it, the endpoint section
+  states that the limiter runs after the access decision and never before, and the
+  `dashboard-preferences` row of the access table describes the write rule that now applies.
+
 ## [0.5.0] - 2026-09-08 — Security release
 
 Security release: every version up to and including 0.4.0 carries the flaws below, so this is not

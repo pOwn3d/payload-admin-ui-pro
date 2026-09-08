@@ -1,7 +1,8 @@
 import type { Endpoint } from 'payload'
-import { rateLimit, rateLimitKey, rateLimitResponse } from '../../utils/security.js'
+import { rateLimit, rateLimitResponse, userRateLimitKey } from '../../utils/security.js'
 import { isAdminRole } from '../../utils/rbac.js'
 import { isAdminCollectionUser } from '../../utils/userCollection.js'
+import { canAccessActivityLog } from './collection.js'
 
 /**
  * Activity log API endpoints.
@@ -22,7 +23,11 @@ import { isAdminCollectionUser } from '../../utils/userCollection.js'
  *   resolved through the shared `isAdminRole` normalisation (case-insensitive,
  *   `superadmin` included, `roles: [{ value }]` handled) so it cannot diverge
  *   from the collection's own access rule
- * - Rate limited
+ * - Rate limited, and the limiter runs AFTER the access decision, never before:
+ *   a caller who gets nothing back must not be able to spend the bucket of a
+ *   caller who does. The keys carry the caller's collection for the same
+ *   reason — `users#3` and `customers#3` are the same `3` on SQLite and
+ *   Postgres, so an id-only key is a bucket shared by two identities.
  * - The presence endpoints are admin-only too. They used to check `!!req.user`
  *   alone while the key is fully predictable (`presence:<collection>:<docId>`),
  *   so a front-office account could walk the whole key space and read back
@@ -85,7 +90,24 @@ export function createActivityEndpoints(
           return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
         }
 
-        const key = `activity-get:${req.user.id}`
+        // Judge the caller BEFORE spending a token. The 403 used to come from
+        // the collection's own `access.read`, several lines below, once the
+        // counter had already been incremented: a front-office account looping
+        // on this route never read a single entry but emptied the bucket of the
+        // administrator carrying the same id (ids are per-collection sequences
+        // on SQLite and Postgres), who then got 429 on the ONE route feeding
+        // the notification bell, the activity feed, the document timeline and
+        // the analytics widget — all four failing silently, so the audit
+        // surface simply looked empty.
+        //
+        // The rule applied here is the collection's own read rule, imported
+        // rather than re-implemented, so the endpoint cannot drift from the
+        // source of truth. It refuses nobody the `find` below would have
+        // served: the response for a denied caller is the same 403, only
+        // cheaper and without touching the counter.
+        if (!canAccessActivityLog({ req })) return forbidden()
+
+        const key = userRateLimitKey('activity-get', req.user)
         if (!rateLimit(key, 60)) return rateLimitResponse()
 
         try {
@@ -155,7 +177,7 @@ export function createActivityEndpoints(
           return forbidden()
         }
 
-        const key = `activity-cleanup:${req.user.id}`
+        const key = userRateLimitKey('activity-cleanup', req.user)
         if (!rateLimit(key, 5)) return rateLimitResponse()
 
         try {
@@ -196,7 +218,7 @@ export function createActivityEndpoints(
 
         // The GET carried no rate limit at all while the key space is
         // enumerable — that is what turned it into an e-mail harvester.
-        if (!rateLimit(`presence-get:${req.user.id}`, 120)) return rateLimitResponse()
+        if (!rateLimit(userRateLimitKey('presence-get', req.user), 120)) return rateLimitResponse()
 
         const url = new URL(req.url || '', 'http://localhost')
         const key = url.searchParams.get('key')
@@ -230,7 +252,7 @@ export function createActivityEndpoints(
 
         if (!isAdminCollectionUser(req as never)) return forbidden()
 
-        const presenceKey = `presence-post:${req.user.id}`
+        const presenceKey = userRateLimitKey('presence-post', req.user)
         if (!rateLimit(presenceKey, 30)) return rateLimitResponse()
 
         try {
@@ -270,7 +292,7 @@ export function createActivityEndpoints(
         // A security table that promises a control it does not implement is
         // worse than an honest blank, so the control is the part that gets
         // fixed. 30/min matches the POST it pairs with — one leave per unmount.
-        if (!rateLimit(`presence-del:${req.user.id}`, 30)) return rateLimitResponse()
+        if (!rateLimit(userRateLimitKey('presence-del', req.user), 30)) return rateLimitResponse()
 
         try {
           const body = await req.json?.() || {}
