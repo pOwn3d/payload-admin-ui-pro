@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.2] - 2026-09-29
+
+Documentation release. No code change: nothing to migrate.
+
+### Changed
+
+- **The README credit links to the page about Payload CMS development.** It pointed to the root
+  of consilioweb.fr; it now points to https://consilioweb.fr/services/developpement-web/payload-cms,
+  the subject of this package.
+
 ## [0.7.1] - 2026-09-08
 
 Fixes a packaging defect that made 0.5.0, 0.6.0 and 0.7.0 unusable: a host
